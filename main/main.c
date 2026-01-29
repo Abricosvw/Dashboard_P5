@@ -14,6 +14,7 @@
 #include "sd_card_manager.h"
 #include "settings_manager.h"
 #include "ui/settings_config.h"
+#include "wifi_controller.h"
 #include "wifi_init.h"
 #include <dirent.h>
 
@@ -172,10 +173,12 @@ void app_main(void) {
   }
 
   // =========================================================================
-  // PHASE 6: WIFI (Background) - ~2500ms
+  // PHASE 6: WIFI (AP Mode + Web Server)
   // =========================================================================
-  ESP_LOGI(TAG, "[6] WiFi init - DISABLED FOR DEBUGGING...");
-  // wifi_init_sta(WIFI_SSID, WIFI_PASS);
+  ESP_LOGI(TAG,
+           "[6] WiFi Access Point init (delayed 6s to allow audio buffer)...");
+  vTaskDelay(pdMS_TO_TICKS(6000));
+  wifi_controller_init();
 
   // =========================================================================
   // PHASE 7: APPLICATION SERVICES

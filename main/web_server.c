@@ -1,4 +1,5 @@
 #include "web_server.h"
+#include "cJSON.h"
 #include "dirent.h"
 #include "ecu_data.h"
 #include "esp_http_server.h"
@@ -6,6 +7,7 @@
 #include "esp_vfs.h"
 #include "include/can_websocket.h"
 #include "sd_card_manager.h"
+#include "wifi_controller.h"
 #include <ctype.h>
 #include <errno.h>
 #include <string.h>
@@ -43,6 +45,67 @@ static void url_decode(char *dst, const char *src) {
     }
   }
   *dst = '\0';
+}
+
+/* WebSocket Handler for Joystick */
+static esp_err_t ws_handler(httpd_req_t *req) {
+  if (req->method == HTTP_GET) {
+    ESP_LOGI(TAG, "WebSocket handshake successful");
+    return ESP_OK;
+  }
+
+  httpd_ws_frame_t ws_pkt;
+  uint8_t *buf = NULL;
+  memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
+  ws_pkt.type = HTTPD_WS_TYPE_TEXT;
+
+  esp_err_t ret = httpd_ws_recv_frame(req, &ws_pkt, 0);
+  if (ret != ESP_OK)
+    return ret;
+
+  if (ws_pkt.len) {
+    buf = calloc(1, ws_pkt.len + 1);
+    if (buf == NULL)
+      return ESP_ERR_NO_MEM;
+    ws_pkt.payload = buf;
+    ret = httpd_ws_recv_frame(req, &ws_pkt, ws_pkt.len);
+    if (ret != ESP_OK) {
+      free(buf);
+      return ret;
+    }
+
+    cJSON *root = cJSON_Parse((char *)ws_pkt.payload);
+    if (root) {
+      game_controller_state_t state;
+      wifi_controller_get_state(
+          &state); // Get current to preserve untouched fields
+
+      cJSON *x = cJSON_GetObjectItem(root, "x");
+      cJSON *y = cJSON_GetObjectItem(root, "y");
+      cJSON *a = cJSON_GetObjectItem(root, "a");
+      cJSON *b = cJSON_GetObjectItem(root, "b");
+      cJSON *s = cJSON_GetObjectItem(root, "s");
+      cJSON *l = cJSON_GetObjectItem(root, "l");
+
+      if (x)
+        state.x = x->valueint;
+      if (y)
+        state.y = y->valueint;
+      if (a)
+        state.button_a = a->valueint;
+      if (b)
+        state.button_b = b->valueint;
+      if (s)
+        state.button_start = s->valueint;
+      if (l)
+        state.button_select = l->valueint;
+
+      wifi_controller_update_state(&state);
+      cJSON_Delete(root);
+    }
+    free(buf);
+  }
+  return ESP_OK;
 }
 
 /* Handler to list files */
@@ -383,6 +446,8 @@ esp_err_t web_server_start(void) {
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   config.uri_match_fn = httpd_uri_match_wildcard;
   config.max_uri_handlers = 12; // Increased for extra handlers
+  config.stack_size =
+      20480; // Increased to 20KB (User request) to prevent overflow
 
   ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);
   if (httpd_start(&s_server, &config) == ESP_OK) {
@@ -423,6 +488,13 @@ esp_err_t web_server_start(void) {
                             .method = HTTP_GET,
                             .handler = ecu_data_api_handler};
     httpd_register_uri_handler(s_server, &data_uri);
+
+    httpd_uri_t ws_uri = {.uri = "/ws",
+                          .method = HTTP_GET,
+                          .handler = ws_handler,
+                          .user_ctx = NULL,
+                          .is_websocket = true};
+    httpd_register_uri_handler(s_server, &ws_uri);
 
     return ESP_OK;
   }

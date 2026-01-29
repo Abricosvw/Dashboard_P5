@@ -109,8 +109,8 @@
         let active = false;
         
         function connect() {
-            // Use port 8081 for the combined WebSocket
-            const wsUrl = `ws://${window.location.hostname}:8081/ws`;
+            // Use the same port as the page (port 80)
+            const wsUrl = `ws://${window.location.host}/ws`;
             ws = new WebSocket(wsUrl);
             
             ws.onopen = () => {

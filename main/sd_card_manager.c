@@ -39,7 +39,8 @@ esp_err_t sd_card_init(void) {
   // WiFi SDIO uses Slot 1 via esp_hosted
   sdmmc_host_t host = SDMMC_HOST_DEFAULT();
   host.slot = SDMMC_HOST_SLOT_0;
-  host.max_freq_khz = SDMMC_FREQ_DEFAULT;
+  host.max_freq_khz =
+      10000; // Reduced from 20MHz to 10MHz to prevent contention with WiFi SDIO
   host.init = sd_host_init_shared; // Use custom init to handle shared host
 
 #ifdef CONFIG_IDF_TARGET_ESP32P4
