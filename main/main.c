@@ -157,8 +157,19 @@ void app_main(void) {
   // =========================================================================
   // PHASE 5: AUDIO (Can play sounds from SD) - ~200ms
   // =========================================================================
-  ESP_LOGI(TAG, "[5] Audio init (ES8311) - DISABLED FOR DEBUGGING...");
-  // audio_init();
+  ESP_LOGI(TAG, "[5] Audio init (ES8311)...");
+  if (audio_init() == ESP_OK) {
+    ESP_LOGI(TAG, "Setting volume to 50%%...");
+    audio_set_volume(50);
+    // audio_play_tone(1000, 1000); // Removed diagnostic beep
+    vTaskDelay(pdMS_TO_TICKS(100));
+
+    ESP_LOGI(TAG, "Playing startup sound from SD card (%s)...",
+             settings_get_boot_sound_path());
+    audio_play_wav(settings_get_boot_sound_path());
+  } else {
+    ESP_LOGE(TAG, "Audio initialization failed!");
+  }
 
   // =========================================================================
   // PHASE 6: WIFI (Background) - ~2500ms

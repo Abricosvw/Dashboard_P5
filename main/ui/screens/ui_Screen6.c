@@ -17,6 +17,7 @@
 #include "settings_config.h" // Убедитесь, что этот файл подключен
 #include "ui_events.h"
 #include "ui_helpers.h"
+#include "ui_sound_selector.h"
 
 #include <esp_log.h>
 #include <stdbool.h>
@@ -35,7 +36,9 @@ void *ui_Button_Enable_Screen3;
 void *ui_Button_Nav_Buttons;
 void *ui_Button_Save_Settings;
 void *ui_Button_Reset_Settings;
-void *ui_Button_AI; // AI Button
+void *ui_Button_AI;          // AI Button
+void *ui_Button_Intro_Sound; // Intro Sound Button
+void *ui_Label_Intro_Sound;
 void *ui_Label_Demo_Mode;
 void *ui_Label_Enable_Screen3;
 void *ui_Label_Nav_Buttons;
@@ -81,8 +84,6 @@ static bool show_eng_act = true;
 static bool show_limit_tq = true;
 
 // Function prototypes
-static void screen6_touch_handler(lv_event_t *e);
-
 static void save_settings_event_cb(lv_event_t *e);
 static void reset_settings_event_cb(lv_event_t *e);
 static void reset_settings_event_cb(lv_event_t *e);
@@ -92,6 +93,7 @@ static void nav_buttons_event_cb(lv_event_t *e);
 static void gauge_checkbox_event_cb(lv_event_t *e);
 static void platform_checkbox_event_cb(lv_event_t *e);
 static void ai_button_event_cb(lv_event_t *e); // New callback
+static void intro_sound_event_cb(lv_event_t *e);
 
 void ui_update_touch_cursor_screen6(void *point);
 
@@ -102,21 +104,7 @@ void ui_Screen6_update_button_states(void);
 void ui_save_device_settings(void);
 void ui_reset_device_settings(void);
 
-// Touch handler for general touch events
-static void screen6_touch_handler(lv_event_t *e) {
-  lv_event_code_t code = lv_event_get_code(e);
-
-  if (code == LV_EVENT_PRESSED) {
-    lv_point_t point;
-    lv_indev_t *indev = lv_indev_get_act();
-    if (indev) {
-      lv_indev_get_point(indev, &point);
-      ui_update_touch_cursor_screen6(&point);
-    }
-  } else if (code == LV_EVENT_RELEASED) {
-    lv_obj_add_flag((lv_obj_t *)ui_Touch_Cursor_Screen6, LV_OBJ_FLAG_HIDDEN);
-  }
-}
+// Touch handler for general touch events removed - using global handler
 
 // Custom swipe handler removed in favor of global ui_screen_swipe_event_cb
 
@@ -176,6 +164,14 @@ static void ai_button_event_cb(lv_event_t *e) {
     lv_obj_set_style_bg_color(btn, lv_color_hex(0xFFFFFF), 0); // Flash
 
     ESP_LOGI("SCREEN6", "AI Listening Triggered");
+  }
+}
+
+// Introductory Sound button event callback
+static void intro_sound_event_cb(lv_event_t *e) {
+  if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+    ui_show_sound_selector();
+    ESP_LOGI("SCREEN6", "Sound selector popup triggered");
   }
 }
 
@@ -542,21 +538,36 @@ void ui_Screen6_screen_init(void) {
   lv_label_set_text(reset_lbl, "RESET DEFAULTS");
   lv_obj_center(reset_lbl);
 
-  // Labels for Lists
+  // Row 4
+  ui_Button_Intro_Sound = lv_btn_create(ui_Screen6);
+  lv_obj_set_size((lv_obj_t *)ui_Button_Intro_Sound, btn_w,
+                  btn_h * 2); // Double height
+  lv_obj_align((lv_obj_t *)ui_Button_Intro_Sound, LV_ALIGN_TOP_MID, 0, 215);
+  lv_obj_set_style_bg_color((lv_obj_t *)ui_Button_Intro_Sound,
+                            lv_color_hex(0xFFCC00), 0);
+  lv_obj_add_event_cb((lv_obj_t *)ui_Button_Intro_Sound, intro_sound_event_cb,
+                      LV_EVENT_CLICKED, NULL);
+  ui_Label_Intro_Sound = lv_label_create((lv_obj_t *)ui_Button_Intro_Sound);
+  lv_label_set_text(ui_Label_Intro_Sound,
+                    "INTRODUCTORY SOUND\n(Select startup audio)");
+  lv_obj_set_style_text_color(ui_Label_Intro_Sound, lv_color_black(), 0);
+  lv_obj_set_style_text_align(ui_Label_Intro_Sound, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_center(ui_Label_Intro_Sound);
+
   lv_obj_t *gauge_label = lv_label_create(ui_Screen6);
   lv_label_set_text(gauge_label, "Visible Gauges:");
   lv_obj_set_style_text_color(gauge_label, lv_color_hex(0x00D4FF), 0);
-  lv_obj_align(gauge_label, LV_ALIGN_TOP_LEFT, 15, 230);
+  lv_obj_align(gauge_label, LV_ALIGN_TOP_LEFT, 15, 305); // Shifted down
 
   lv_obj_t *platform_label = lv_label_create(ui_Screen6);
   lv_label_set_text(platform_label, "Vehicle Platform:");
   lv_obj_set_style_text_color(platform_label, lv_color_hex(0x00FF88), 0);
-  lv_obj_align(platform_label, LV_ALIGN_TOP_RIGHT, -15, 230);
+  lv_obj_align(platform_label, LV_ALIGN_TOP_RIGHT, -15, 305); // Shifted down
 
-  // Lists Section (y=260)
+  // Lists Section (y=335)
   ui_Container_GaugeList = lv_obj_create(ui_Screen6);
-  lv_obj_set_size(ui_Container_GaugeList, 340, 950);
-  lv_obj_align(ui_Container_GaugeList, LV_ALIGN_TOP_LEFT, 15, 260);
+  lv_obj_set_size(ui_Container_GaugeList, 340, 875); // Slightly smaller
+  lv_obj_align(ui_Container_GaugeList, LV_ALIGN_TOP_LEFT, 15, 335);
   lv_obj_set_style_bg_color(ui_Container_GaugeList, lv_color_hex(0x1a1a1a), 0);
   lv_obj_set_style_border_width(ui_Container_GaugeList, 1, 0);
   lv_obj_set_style_border_color(ui_Container_GaugeList, lv_color_hex(0x333333),
@@ -590,8 +601,8 @@ void ui_Screen6_screen_init(void) {
   }
 
   ui_Container_PlatformList = lv_obj_create(ui_Screen6);
-  lv_obj_set_size(ui_Container_PlatformList, 340, 950);
-  lv_obj_align(ui_Container_PlatformList, LV_ALIGN_TOP_RIGHT, -15, 260);
+  lv_obj_set_size(ui_Container_PlatformList, 340, 875); // Slightly smaller
+  lv_obj_align(ui_Container_PlatformList, LV_ALIGN_TOP_RIGHT, -15, 335);
   lv_obj_set_style_bg_color(ui_Container_PlatformList, lv_color_hex(0x1a1a1a),
                             0);
   lv_obj_set_style_border_width(ui_Container_PlatformList, 1, 0);

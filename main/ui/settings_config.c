@@ -36,7 +36,8 @@ static void settings_to_json(const touch_settings_t *settings, char *buffer,
            "\"show_fuel_press\":%s,\"show_battery\":%s,"
            "\"show_pedal\":%s,\"show_wg_pos\":%s,\"show_bov\":%s,\"show_tcu_"
            "req\":%s,\"show_tcu_act\":%s,\"show_eng_req\":%s,"
-           "\"show_eng_act\":%s,\"show_limit_tq\":%s,\"can_platform\":%d}",
+           "\"show_eng_act\":%s,\"show_limit_tq\":%s,\"can_platform\":%d,"
+           "\"boot_sound_path\":\"%s\"}",
            settings->touch_sensitivity_level,
            settings->demo_mode_enabled ? "true" : "false",
            settings->screen3_enabled ? "true" : "false",
@@ -60,7 +61,7 @@ static void settings_to_json(const touch_settings_t *settings, char *buffer,
            sys_settings->show_eng_req ? "true" : "false",
            sys_settings->show_eng_act ? "true" : "false",
            sys_settings->show_limit_tq ? "true" : "false",
-           settings->can_platform);
+           settings->can_platform, settings->boot_sound_path);
 }
 
 // Helper to deserialize settings from a JSON string
@@ -144,6 +145,24 @@ static bool settings_from_json(const char *json_str,
     PARSE_BOOL("show_eng_act", sys_settings->show_eng_act);
     PARSE_BOOL("show_limit_tq", sys_settings->show_limit_tq);
 
+    // Parse boot_sound_path
+    const char *sound_key = "\"boot_sound_path\":\"";
+    char *sound_ptr = strstr(json_str, sound_key);
+    if (sound_ptr) {
+      char *val_start = sound_ptr + strlen(sound_key);
+      char *val_end = strchr(val_start, '\"');
+      if (val_end) {
+        size_t len = val_end - val_start;
+        if (len < sizeof(settings->boot_sound_path)) {
+          strncpy(settings->boot_sound_path, val_start, len);
+          settings->boot_sound_path[len] = '\0';
+        }
+      }
+    } else {
+      strncpy(settings->boot_sound_path, DEFAULT_BOOT_SOUND_PATH,
+              sizeof(settings->boot_sound_path));
+    }
+
     return true;
   }
   return false;
@@ -158,6 +177,8 @@ void settings_init_defaults(touch_settings_t *settings) {
   settings->screen3_enabled = DEFAULT_SCREEN3_ENABLED;
   settings->nav_buttons_enabled = true; // FORCE ON FOR DEBUGGING
   settings->can_platform = DEFAULT_CAN_PLATFORM;
+  strncpy(settings->boot_sound_path, DEFAULT_BOOT_SOUND_PATH,
+          sizeof(settings->boot_sound_path));
   for (int i = 0; i < SCREEN1_ARCS_COUNT; i++)
     settings->screen1_arcs_enabled[i] = true;
   for (int i = 0; i < SCREEN2_ARCS_COUNT; i++)
@@ -431,4 +452,17 @@ void demo_mode_test_toggle(void) {
 void demo_mode_status_report(void) {
   ESP_LOGI(TAG, "Demo Mode Status: %s",
            current_settings.demo_mode_enabled ? "ENABLED" : "DISABLED");
+}
+
+const char *settings_get_boot_sound_path(void) {
+  return current_settings.boot_sound_path;
+}
+
+void settings_set_boot_sound_path(const char *path) {
+  if (path) {
+    strncpy(current_settings.boot_sound_path, path,
+            sizeof(current_settings.boot_sound_path) - 1);
+    current_settings
+        .boot_sound_path[sizeof(current_settings.boot_sound_path) - 1] = '\0';
+  }
 }
