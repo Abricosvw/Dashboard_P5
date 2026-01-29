@@ -2,14 +2,17 @@
 
 #include "esp_err.h"
 #include "sdkconfig.h"
+#include <stdbool.h>
 
 // I2S Audio Pins (Waveshare ESP32-P4-Module-DEV-KIT)
 // Configured via Kconfig
 #define AUDIO_BCLK_IO CONFIG_AUDIO_I2S_SCLK_IO
 #define AUDIO_MCLK_IO CONFIG_AUDIO_I2S_MCLK_IO
 #define AUDIO_WS_IO CONFIG_AUDIO_I2S_WS_IO
-#define AUDIO_DOUT_IO CONFIG_AUDIO_I2S_DOUT_IO // DSDIN -> Input to Codec (Speaker Playback)
-#define AUDIO_DIN_IO CONFIG_AUDIO_I2S_DIN_IO // ASDOUT -> Output from Codec (Mic Recording)
+#define AUDIO_DOUT_IO                                                          \
+  CONFIG_AUDIO_I2S_DOUT_IO // DSDIN -> Input to Codec (Speaker Playback)
+#define AUDIO_DIN_IO                                                           \
+  CONFIG_AUDIO_I2S_DIN_IO // ASDOUT -> Output from Codec (Mic Recording)
 
 // I2C Control Pins (Shared with Touch/Peripherals)
 // Uses the main I2C bus
@@ -58,3 +61,23 @@ esp_err_t audio_set_volume(int volume_percent);
  * @return ESP_OK on success
  */
 esp_err_t audio_record_wav(const char *path, uint32_t duration_ms);
+
+/**
+ * @brief Pause audio playback (Instant mute + task sleep)
+ */
+esp_err_t audio_pause(void);
+
+/**
+ * @brief Resume audio playback (Unmute + task wake)
+ */
+esp_err_t audio_resume(void);
+
+/**
+ * @brief Stop audio playback (Instant mute + task exit)
+ */
+esp_err_t audio_stop(void);
+
+/**
+ * @brief Check if audio is currently playing
+ */
+bool audio_is_playing(void);

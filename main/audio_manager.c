@@ -5,6 +5,7 @@
 #include "esp_check.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/event_groups.h"
 #include "freertos/task.h"
 #include <errno.h>
 #include <math.h>
@@ -18,6 +19,14 @@ static i2s_chan_handle_t rx_handle = NULL;
 static uint32_t current_sample_rate = AUDIO_SAMPLE_RATE;
 static i2c_master_dev_handle_t s_codec_i2c_handle = NULL;
 static int s_current_volume_percent = 50;
+static volatile bool s_stop_requested = false;
+static volatile bool s_pause_requested = false;
+static TaskHandle_t s_audio_task_handle = NULL;
+static EventGroupHandle_t s_audio_event_group = NULL;
+static char s_current_wav_path[128] = {0};
+
+#define AUDIO_EVENT_START (1 << 0)
+#define AUDIO_EVENT_IDLE (1 << 1)
 
 // Define ES8311 Address if not defined (Fallback)
 #ifndef ES8311_ADDRESS_0
@@ -46,6 +55,23 @@ static int s_current_volume_percent = 50;
 #define ES8311_REG_DAC_VOL 0x32  // Volume control
 #define ES8311_REG_DAC_SET2 0x37 // Ramp/Setting
 #define ES8311_REG_GPIO 0x44
+
+// WAV Header Structure (simplified for parsing)
+typedef struct {
+  char riff_header[4]; // "RIFF"
+  uint32_t wav_size;
+  char wave_header[4]; // "WAVE"
+  char fmt_header[4];  // "fmt "
+  uint32_t fmt_chunk_size;
+  uint16_t audio_format;
+  uint16_t num_channels;
+  uint32_t sample_rate;
+  uint32_t byte_rate;
+  uint16_t sample_alignment;
+  uint16_t bit_depth;
+  char data_header[4]; // "data"
+  uint32_t data_bytes;
+} wav_header_t;
 
 static esp_err_t es8311_write_reg(uint8_t reg_addr, uint8_t data) {
   if (!s_codec_i2c_handle)
@@ -120,6 +146,13 @@ static esp_err_t audio_codec_config(uint32_t sample_rate) {
   ESP_LOGI(TAG, "ES8311 Configured for %" PRIu32 " Hz (Mono Setup)",
            sample_rate);
   return ESP_OK;
+}
+
+static esp_err_t audio_codec_set_mute(bool mute) {
+  if (!s_codec_i2c_handle)
+    return ESP_FAIL;
+  // Reg 0x31: bit 5=mute_dac, bit 4=mute_adc. 0x00=unmute, 0x20=mute DAC
+  return es8311_write_reg(ES8311_REG_DAC_SET1, mute ? 0x20 : 0x00);
 }
 
 static esp_err_t audio_codec_dump_regs(void) {
@@ -249,7 +282,91 @@ esp_err_t audio_init(void) {
   ESP_RETURN_ON_ERROR(audio_codec_init(), TAG, "Codec init failed");
 
   ESP_LOGI(TAG, "Audio System Initialized Successfully");
+
+  s_audio_event_group = xEventGroupCreate();
+  xEventGroupSetBits(s_audio_event_group, AUDIO_EVENT_IDLE);
+
   return ESP_OK;
+}
+
+// Global player task
+static void audio_player_task(void *pvParameters) {
+  while (1) {
+    // Wait for start signal
+    xEventGroupWaitBits(s_audio_event_group, AUDIO_EVENT_START, pdTRUE, pdTRUE,
+                        portMAX_DELAY);
+    xEventGroupClearBits(s_audio_event_group, AUDIO_EVENT_IDLE);
+
+    ESP_LOGI(TAG, "Background playback started: %s", s_current_wav_path);
+
+    FILE *f = fopen(s_current_wav_path, "rb");
+    if (!f) {
+      ESP_LOGE(TAG, "Failed to open WAV");
+      goto finish;
+    }
+
+    wav_header_t header;
+    if (fread(&header, 1, sizeof(wav_header_t), f) != sizeof(wav_header_t)) {
+      fclose(f);
+      goto finish;
+    }
+
+    // Switch sample rate
+    if (header.sample_rate > 0 && header.sample_rate <= 48000) {
+      audio_set_sample_rate_internal(header.sample_rate);
+    }
+
+    // Robust data search
+    uint32_t chunk_id, chunk_sz;
+    fseek(f, 12, SEEK_SET);
+    bool found = false;
+    while (fread(&chunk_id, 1, 4, f) == 4 && fread(&chunk_sz, 1, 4, f) == 4) {
+      if (chunk_id == 0x61746164) { // 'data'
+        found = true;
+        break;
+      }
+      fseek(f, chunk_sz, SEEK_CUR);
+    }
+    if (!found) {
+      fclose(f);
+      goto finish;
+    }
+
+    const size_t buf_sz = 2048;
+    int16_t *buf = malloc(buf_sz);
+    if (!buf) {
+      fclose(f);
+      goto finish;
+    }
+
+    s_stop_requested = false;
+    s_pause_requested = false;
+    audio_codec_set_mute(false);
+
+    size_t rd, wr;
+    while (!s_stop_requested) {
+      if (s_pause_requested) {
+        audio_codec_set_mute(true);
+        vTaskDelay(pdMS_TO_TICKS(50));
+        continue;
+      }
+      audio_codec_set_mute(false);
+
+      rd = fread(buf, 1, buf_sz, f);
+      if (rd == 0)
+        break;
+
+      i2s_channel_write(tx_handle, buf, rd, &wr, portMAX_DELAY);
+    }
+
+    free(buf);
+    fclose(f);
+
+  finish:
+    audio_codec_set_mute(true); // Always mute at end or stop
+    xEventGroupSetBits(s_audio_event_group, AUDIO_EVENT_IDLE);
+    ESP_LOGI(TAG, "Background playback idle");
+  }
 }
 
 esp_err_t audio_play_tone(uint32_t freq_hz, uint32_t duration_ms) {
@@ -284,140 +401,50 @@ esp_err_t audio_play_tone(uint32_t freq_hz, uint32_t duration_ms) {
   return ESP_OK;
 }
 
-// WAV Header Structure (simplified for parsing)
-typedef struct {
-  char riff_header[4]; // "RIFF"
-  uint32_t wav_size;
-  char wave_header[4]; // "WAVE"
-  char fmt_header[4];  // "fmt "
-  uint32_t fmt_chunk_size;
-  uint16_t audio_format;
-  uint16_t num_channels;
-  uint32_t sample_rate;
-  uint32_t byte_rate;
-  uint16_t sample_alignment;
-  uint16_t bit_depth;
-  char data_header[4]; // "data"
-  uint32_t data_bytes;
-} wav_header_t;
+// Register dump function
+static esp_err_t audio_codec_dump_regs(void);
 
 esp_err_t audio_play_wav(const char *path) {
-  if (!tx_handle) {
-    ESP_LOGE(TAG, "I2S not initialized");
+  if (!s_audio_event_group)
     return ESP_FAIL;
+
+  // 1. Terminate current if any
+  audio_stop();
+  // Wait for idle (up to 500ms)
+  xEventGroupWaitBits(s_audio_event_group, AUDIO_EVENT_IDLE, pdFALSE, pdTRUE,
+                      pdMS_TO_TICKS(500));
+
+  if (path) {
+    strncpy(s_current_wav_path, path, sizeof(s_current_wav_path) - 1);
   }
 
-  ESP_LOGI(TAG, "Playing WAV file: %s", path);
-
-  // Basic check: if path ends with '/', it's a directory
-  if (path == NULL || strlen(path) == 0 || path[strlen(path) - 1] == '/') {
-    ESP_LOGE(TAG, "Invalid WAV path: %s", path ? path : "NULL");
-    return ESP_FAIL;
+  if (!s_audio_task_handle) {
+    xTaskCreate(audio_player_task, "audio_player", 4096, NULL, 5,
+                &s_audio_task_handle);
   }
 
-  FILE *f = fopen(path, "rb");
-  if (f == NULL) {
-    ESP_LOGE(TAG, "Failed to open WAV file: %s (errno: %d)", path, errno);
-    return ESP_FAIL;
-  }
-
-  // Read Header
-  wav_header_t header;
-  if (fread(&header, 1, sizeof(wav_header_t), f) != sizeof(wav_header_t)) {
-    ESP_LOGE(TAG, "Failed to read WAV header");
-    fclose(f);
-    return ESP_FAIL;
-  }
-
-  // Debug Output
-  ESP_LOGI(TAG, "WAV Header Details:");
-  ESP_LOGI(TAG, "  RIFF: %.4s", header.riff_header);
-  ESP_LOGI(TAG, "  WAVE: %.4s", header.wave_header);
-  ESP_LOGI(TAG, "  Format: %d (1=PCM)", header.audio_format);
-  ESP_LOGI(TAG, "  Channels: %d", header.num_channels);
-  ESP_LOGI(TAG, "  Sample Rate: %" PRIu32 " Hz", header.sample_rate);
-  ESP_LOGI(TAG, "  Bit Depth: %d bits", header.bit_depth);
-  ESP_LOGI(TAG, "  Data Bytes: %" PRIu32, header.data_bytes);
-
-  // Validate basic PCM
-  if (strncmp(header.riff_header, "RIFF", 4) != 0 ||
-      strncmp(header.wave_header, "WAVE", 4) != 0) {
-    ESP_LOGE(TAG, "Invalid WAV file format");
-    fclose(f);
-    return ESP_FAIL;
-  }
-
-  // Auto-switch sample rate if supported (added)
-  if (header.sample_rate > 0 && header.sample_rate <= 48000) {
-    audio_set_sample_rate_internal(header.sample_rate);
-  } else {
-    ESP_LOGW(TAG, "Unsupported WAV sample rate: %" PRIu32, header.sample_rate);
-  }
-
-  // Search for "data" chunk
-  uint32_t chunk_id;
-  uint32_t wav_chunk_size;
-  bool data_found = false;
-
-  long current_offset = 12; // Start after RIFF + Size + WAVE (4+4+4)
-  fseek(f, current_offset, SEEK_SET);
-
-  while (fread(&chunk_id, 1, 4, f) == 4 &&
-         fread(&wav_chunk_size, 1, 4, f) == 4) {
-    if (chunk_id ==
-        0x61746164) { // "data" in little endian is 0x61746164 ('d','a','t','a')
-      data_found = true;
-      ESP_LOGI(TAG, "Found data chunk at offset %ld, size: %" PRIu32, ftell(f),
-               wav_chunk_size);
-      header.data_bytes = wav_chunk_size;
-      break;
-    }
-
-    // Skip this chunk
-    fseek(f, wav_chunk_size, SEEK_CUR);
-  }
-
-  if (!data_found) {
-    ESP_LOGE(TAG, "WAV 'data' chunk not found");
-    fclose(f);
-    // Fallback: try standard 44 bytes if search failed, though unlikely to work
-    // well
-    return ESP_FAIL;
-  }
-
-  // Buffer for reading
-  const size_t chunk_size = 1024;
-  int16_t *buffer = malloc(chunk_size);
-  if (!buffer) {
-    ESP_LOGE(TAG, "Memory allocation failed");
-    fclose(f);
-    return ESP_ERR_NO_MEM;
-  }
-
-  size_t bytes_read = 0;
-  size_t bytes_written = 0;
-  size_t total_bytes_played = 0;
-
-  // Play only the data chunk
-  while (total_bytes_played < header.data_bytes) {
-    size_t bytes_to_read = chunk_size;
-
-    if (total_bytes_played + chunk_size > header.data_bytes) {
-      bytes_to_read = header.data_bytes - total_bytes_played;
-    }
-
-    bytes_read = fread(buffer, 1, bytes_to_read, f);
-    if (bytes_read == 0)
-      break; // EOF or error
-
-    i2s_channel_write(tx_handle, buffer, bytes_read, &bytes_written, 1000);
-    total_bytes_played += bytes_read;
-  }
-
-  free(buffer);
-  fclose(f);
-  ESP_LOGI(TAG, "WAV playback finished");
+  xEventGroupSetBits(s_audio_event_group, AUDIO_EVENT_START);
   return ESP_OK;
+}
+
+esp_err_t audio_pause(void) {
+  s_pause_requested = true;
+  return audio_codec_set_mute(true);
+}
+
+esp_err_t audio_resume(void) {
+  s_pause_requested = false;
+  return audio_codec_set_mute(false);
+}
+
+esp_err_t audio_stop(void) {
+  s_stop_requested = true;
+  return audio_codec_set_mute(true);
+}
+
+bool audio_is_playing(void) {
+  EventBits_t bits = xEventGroupGetBits(s_audio_event_group);
+  return !(bits & AUDIO_EVENT_IDLE) && !s_pause_requested;
 }
 
 esp_err_t audio_set_volume(int volume_percent) {
