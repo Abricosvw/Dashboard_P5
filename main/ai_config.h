@@ -2,7 +2,7 @@
 
 // Gemini Assistant Configuration
 // Get your API Key from https://aistudio.google.com/
-#define GEMINI_API_KEY " put hear your pirsanal API key "
+#define GEMINI_API_KEY " put hear your personal API key "
 
 // Google Generative AI REST endpoint
 #define GEMINI_API_ENDPOINT                                                    \
