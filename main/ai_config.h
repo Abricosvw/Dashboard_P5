@@ -2,7 +2,7 @@
 
 // Gemini Assistant Configuration
 // Get your API Key from https://aistudio.google.com/
-#define GEMINI_API_KEY "AIzaSyAQH-0Dn9Gx3ApD3WzerJUjfpsepwxcwCc"
+#define GEMINI_API_KEY " put hear your pirsanal API key "
 
 // Google Generative AI REST endpoint
 #define GEMINI_API_ENDPOINT                                                    \
@@ -11,4 +11,4 @@
 
 // WiFi Credentials
 #define WIFI_SSID "ASUS"
-#define WIFI_PASS "266203A278"
+#define WIFI_PASS " password   "
