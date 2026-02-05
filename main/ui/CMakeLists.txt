@@ -8,8 +8,11 @@ SET(SOURCES screens/ui_Screen1.c
     ui.c
     settings_config.c
     ui_screen_manager.c
+    ui_sound_selector.c
+    ui_wifi_settings.c
     components/ui_comp_hook.c
     ui_helpers.c
+    ui_font_montserrat_20_en_ru.c
     ../background_task.c 
 )
 

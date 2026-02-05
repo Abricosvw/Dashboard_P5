@@ -1,4 +1,10 @@
 dependencies:
+  es8311:
+    dependencies: []
+    source:
+      path: C:\Users\11218\Dashboard_P5\components\es8311
+      type: local
+    version: 1.0.0~1
   espressif/cmake_utilities:
     component_hash: 351350613ceafba240b761b4ea991e0f231ac7a9f59a9ee901f751bddc0bb18f
     dependencies:
@@ -136,7 +142,7 @@ dependencies:
       type: service
     version: 1.5.0
   espressif/wifi_remote_over_eppp:
-    component_hash: e1b4c485ed5afe36615b9b555dfdcbe4be33898dc3732b5bedf235bba45bd286
+    component_hash: ac4d13625cc9f88597cd612d2758580fac287d8ec731b606f2a0720d28cda6cd
     dependencies:
     - name: espressif/eppp_link
       registry_url: https://components.espressif.com
@@ -148,7 +154,7 @@ dependencies:
     source:
       registry_url: https://components.espressif.com
       type: service
-    version: 0.3.0
+    version: 0.3.1
   idf:
     source:
       type: idf
@@ -285,6 +291,7 @@ dependencies:
     - esp32p4
     version: 1.0.6
 direct_dependencies:
+- espressif/es8311
 - espressif/esp_hosted
 - espressif/esp_lcd_touch
 - espressif/esp_lvgl_port
@@ -293,6 +300,6 @@ direct_dependencies:
 - idf
 - lvgl/lvgl
 - waveshare/esp32_p4_nano
-manifest_hash: 999bcd8a3614ffbe55fa288ed4e92fa997244c93e4295d3d2835174af1618913
+manifest_hash: 7172ef87055ab2582b53ec297df5f095cb64e9237f70627cb3d413ab3b7086b8
 target: esp32p4
 version: 2.0.0

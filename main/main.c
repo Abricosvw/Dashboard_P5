@@ -189,7 +189,8 @@ void app_main(void) {
   ESP_LOGI(TAG, "=== System Ready! ===");
 
   // Start system monitoring task
-  xTaskCreate(system_monitor_task, "sys_mon", 4096, NULL, 5, NULL);
+  xTaskCreatePinnedToCore(system_monitor_task, "sys_mon", 4096, NULL, 5, NULL,
+                          0);
 
   // Main loop
   while (1) {

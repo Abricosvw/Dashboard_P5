@@ -21,11 +21,10 @@ esp_err_t main_gui_init(esp_lcd_panel_handle_t panel_handle,
   ESP_LOGI(TAG, "  Initializing LVGL port...");
   const lvgl_port_cfg_t lvgl_cfg = {
       .task_priority = 5,
-      .task_stack = 32768,
-      .task_affinity =
-          1, // Переносим на свободное ядро 1 для устранения WDT на ядре 0
-      .task_max_sleep_ms = 100,
-      .timer_period_ms = 33, // 30 FPS (Smoother motion)
+      .task_stack = 65536,
+      .task_affinity = 1,
+      .task_max_sleep_ms = 500,
+      .timer_period_ms = 5,
   };
   esp_err_t ret = lvgl_port_init(&lvgl_cfg);
   if (ret != ESP_OK) {

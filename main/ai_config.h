@@ -1,19 +1,14 @@
 #pragma once
 
-// AI Assistant Configuration
+// Gemini Assistant Configuration
+// Get your API Key from https://aistudio.google.com/
+#define GEMINI_API_KEY "AIzaSyAQH-0Dn9Gx3ApD3WzerJUjfpsepwxcwCc"
 
-// Agent Share Code for Authentication
-#define XIAOZHI_AGENT_CODE "oWY3UMsM6w"
+// Google Generative AI REST endpoint
+#define GEMINI_API_ENDPOINT                                                    \
+  "https://generativelanguage.googleapis.com/v1beta/models/"                   \
+  "gemini-2.5-flash:generateContent"
 
-// XiaoZhi Server URL
-// Note: Official server usually uses WSS, but for simplicity/testing we might
-// use WS or standard endpoint. Based on xiaozhi-esp32, the default might be
-// dynamic, but we'll define the core host here.
-#define XIAOZHI_SERVER_URL "ws://api.xiaozhi.me/ws"
-// Or specific endpoint if found in docs. For now using a placeholder that looks
-// standard. Actually, let's verify if we need a specific token endpoint.
-// usually it's ws://[server]:[port]/ws?token=[token]
-
-// WiFi Credentials (User Provided)
+// WiFi Credentials
 #define WIFI_SSID "ASUS"
 #define WIFI_PASS "266203A278"

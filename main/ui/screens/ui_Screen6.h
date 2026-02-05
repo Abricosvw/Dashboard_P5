@@ -25,6 +25,12 @@ extern void *ui_Button_Enable_Screen3;
 extern void *ui_Button_Save_Settings;
 extern void *ui_Button_Reset_Settings;
 
+// New WiFi and AI Status Objects
+extern lv_obj_t *ui_Container_WiFiStats;
+extern lv_obj_t *ui_Container_AIStatus;
+extern lv_obj_t *ui_Label_WiFiInfo;
+extern lv_obj_t *ui_Label_AIInfo;
+
 // Functions for device parameters settings
 extern void ui_update_device_settings_display(void);
 extern void ui_save_device_settings(void);

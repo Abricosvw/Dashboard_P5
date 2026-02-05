@@ -112,12 +112,17 @@ void ui_Screen8_update_animations(bool demo_enabled) {
 }
 
 // Navigation Button Callback
+/*
 static void nav_button_cb_s8(lv_event_t *e) {
-  long forward = (long)lv_event_get_user_data(e);
-  if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-    ui_switch_to_next_enabled_screen((bool)forward);
+  lv_event_code_t code = lv_event_get_code(e);
+  if (code == LV_EVENT_CLICKED) {
+    lv_obj_t *btn = lv_event_get_target(e);
+    int target_screen = (int)lv_obj_get_user_data(btn);
+    // Use the global manager to switch
+    ui_switch_to_screen(target_screen);
   }
 }
+*/
 
 // Swipe handler
 

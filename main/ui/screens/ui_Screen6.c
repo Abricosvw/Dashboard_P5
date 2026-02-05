@@ -18,6 +18,8 @@
 #include "ui_events.h"
 #include "ui_helpers.h"
 #include "ui_sound_selector.h"
+#include "ui_wifi_settings.h"
+#include "wifi_controller.h"
 
 #include <esp_log.h>
 #include <stdbool.h>
@@ -25,6 +27,7 @@
 #include <string.h>
 
 LV_FONT_DECLARE(lv_font_montserrat_24);
+LV_FONT_DECLARE(montserrat_20_en_ru); // Cyrillic support
 
 // Screen object
 lv_obj_t *ui_Screen6;
@@ -38,6 +41,7 @@ void *ui_Button_Save_Settings;
 void *ui_Button_Reset_Settings;
 void *ui_Button_AI;          // AI Button
 void *ui_Button_Intro_Sound; // Intro Sound Button
+void *ui_Button_Wifi;        // WiFi Settings Button
 void *ui_Label_Intro_Sound;
 void *ui_Label_Demo_Mode;
 void *ui_Label_Enable_Screen3;
@@ -51,6 +55,15 @@ lv_obj_t *ui_Touch_Cursor_Screen6;
 static lv_obj_t *ui_Container_GaugeList = NULL;
 // Platform List Container
 static lv_obj_t *ui_Container_PlatformList = NULL;
+
+// New WiFi and AI Status Objects
+lv_obj_t *ui_Container_WiFiStats = NULL;
+lv_obj_t *ui_Container_AIStatus = NULL;
+lv_obj_t *ui_Label_WiFiInfo = NULL;
+lv_obj_t *ui_Label_AIInfo = NULL;
+
+// Timer for WiFi status updates
+static lv_timer_t *wifi_status_timer = NULL;
 
 // Settings state
 static int settings_modified = 0;
@@ -94,6 +107,8 @@ static void gauge_checkbox_event_cb(lv_event_t *e);
 static void platform_checkbox_event_cb(lv_event_t *e);
 static void ai_button_event_cb(lv_event_t *e); // New callback
 static void intro_sound_event_cb(lv_event_t *e);
+static void wifi_button_event_cb(lv_event_t *e);
+void ui_Screen6_update_wifi_status(lv_timer_t *timer); // WiFi status update
 
 void ui_update_touch_cursor_screen6(void *point);
 
@@ -155,13 +170,24 @@ static void enable_screen3_event_cb(lv_event_t *e) {
 }
 
 // AI Button event callback
+static lv_obj_t *ai_button_ref = NULL; // Store button reference for color reset
+
 static void ai_button_event_cb(lv_event_t *e) {
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+    lv_obj_t *btn = lv_event_get_target(e);
+    ai_button_ref = btn;
+
+    // Set to "active/recording" color (blue)
+    lv_obj_set_style_bg_color(btn, lv_color_hex(0x0088FF), 0);
+
+    // Force immediate UI refresh before blocking call
+    lv_refr_now(NULL);
+
+    // Trigger AI listening
     ai_manager_trigger_listening();
 
-    // Feedback
-    lv_obj_t *btn = lv_event_get_target(e);
-    lv_obj_set_style_bg_color(btn, lv_color_hex(0xFFFFFF), 0); // Flash
+    // Reset to original color (green) after recording complete
+    lv_obj_set_style_bg_color(btn, lv_color_hex(0x00FF88), 0);
 
     ESP_LOGI("SCREEN6", "AI Listening Triggered");
   }
@@ -172,6 +198,14 @@ static void intro_sound_event_cb(lv_event_t *e) {
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     ui_show_sound_selector();
     ESP_LOGI("SCREEN6", "Sound selector popup triggered");
+  }
+}
+
+// WiFi Settings button event callback
+static void wifi_button_event_cb(lv_event_t *e) {
+  if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+    ui_show_wifi_settings();
+    ESP_LOGI("SCREEN6", "WiFi settings popup triggered");
   }
 }
 
@@ -457,7 +491,7 @@ void ui_Screen6_screen_init(void) {
   lv_obj_set_style_text_color((lv_obj_t *)ui_Label_Device_Title,
                               lv_color_hex(0x00D4FF), 0);
   lv_obj_set_style_text_font((lv_obj_t *)ui_Label_Device_Title,
-                             &lv_font_montserrat_24, 0);
+                             &montserrat_20_en_ru, 0); // Cyrillic support
   lv_obj_align((lv_obj_t *)ui_Label_Device_Title, LV_ALIGN_TOP_MID, 0, 10);
 
   // Settings Buttons - 2x3 Grid at Top
@@ -540,34 +574,45 @@ void ui_Screen6_screen_init(void) {
 
   // Row 4
   ui_Button_Intro_Sound = lv_btn_create(ui_Screen6);
-  lv_obj_set_size((lv_obj_t *)ui_Button_Intro_Sound, btn_w,
-                  btn_h * 2); // Double height
-  lv_obj_align((lv_obj_t *)ui_Button_Intro_Sound, LV_ALIGN_TOP_MID, 0, 215);
+  lv_obj_set_size((lv_obj_t *)ui_Button_Intro_Sound, btn_w, btn_h);
+  lv_obj_align((lv_obj_t *)ui_Button_Intro_Sound, LV_ALIGN_TOP_LEFT, btn_x_left,
+               215);
   lv_obj_set_style_bg_color((lv_obj_t *)ui_Button_Intro_Sound,
                             lv_color_hex(0xFFCC00), 0);
   lv_obj_add_event_cb((lv_obj_t *)ui_Button_Intro_Sound, intro_sound_event_cb,
                       LV_EVENT_CLICKED, NULL);
   ui_Label_Intro_Sound = lv_label_create((lv_obj_t *)ui_Button_Intro_Sound);
-  lv_label_set_text(ui_Label_Intro_Sound,
-                    "INTRODUCTORY SOUND\n(Select startup audio)");
+  lv_label_set_text(ui_Label_Intro_Sound, "Select startup audio");
   lv_obj_set_style_text_color(ui_Label_Intro_Sound, lv_color_black(), 0);
-  lv_obj_set_style_text_align(ui_Label_Intro_Sound, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_center(ui_Label_Intro_Sound);
+
+  ui_Button_Wifi = lv_btn_create(ui_Screen6);
+  lv_obj_set_size((lv_obj_t *)ui_Button_Wifi, btn_w, btn_h);
+  lv_obj_align((lv_obj_t *)ui_Button_Wifi, LV_ALIGN_TOP_LEFT, btn_x_right, 215);
+  lv_obj_set_style_bg_color((lv_obj_t *)ui_Button_Wifi, lv_color_hex(0x00FF88),
+                            0);
+  lv_obj_add_event_cb((lv_obj_t *)ui_Button_Wifi, wifi_button_event_cb,
+                      LV_EVENT_CLICKED, NULL);
+  lv_obj_t *wifi_lbl = lv_label_create((lv_obj_t *)ui_Button_Wifi);
+  lv_label_set_text(wifi_lbl, LV_SYMBOL_WIFI " WIFI SETTINGS");
+  lv_obj_set_style_text_color(wifi_lbl, lv_color_black(), 0);
+  lv_obj_center(wifi_lbl);
 
   lv_obj_t *gauge_label = lv_label_create(ui_Screen6);
   lv_label_set_text(gauge_label, "Visible Gauges:");
   lv_obj_set_style_text_color(gauge_label, lv_color_hex(0x00D4FF), 0);
-  lv_obj_align(gauge_label, LV_ALIGN_TOP_LEFT, 15, 305); // Shifted down
+  lv_obj_align(gauge_label, LV_ALIGN_TOP_LEFT, 15, 270);
 
   lv_obj_t *platform_label = lv_label_create(ui_Screen6);
   lv_label_set_text(platform_label, "Vehicle Platform:");
   lv_obj_set_style_text_color(platform_label, lv_color_hex(0x00FF88), 0);
-  lv_obj_align(platform_label, LV_ALIGN_TOP_RIGHT, -15, 305); // Shifted down
+  lv_obj_align(platform_label, LV_ALIGN_TOP_RIGHT, -15, 270);
 
-  // Lists Section (y=335)
+  // Lists Section (y=300)
   ui_Container_GaugeList = lv_obj_create(ui_Screen6);
-  lv_obj_set_size(ui_Container_GaugeList, 340, 875); // Slightly smaller
-  lv_obj_align(ui_Container_GaugeList, LV_ALIGN_TOP_LEFT, 15, 335);
+  lv_obj_set_size(ui_Container_GaugeList, 340, 450);
+  lv_obj_align(ui_Container_GaugeList, LV_ALIGN_TOP_LEFT, 15, 300);
+  lv_obj_set_scrollbar_mode(ui_Container_GaugeList, LV_SCROLLBAR_MODE_AUTO);
   lv_obj_set_style_bg_color(ui_Container_GaugeList, lv_color_hex(0x1a1a1a), 0);
   lv_obj_set_style_border_width(ui_Container_GaugeList, 1, 0);
   lv_obj_set_style_border_color(ui_Container_GaugeList, lv_color_hex(0x333333),
@@ -589,7 +634,8 @@ void ui_Screen6_screen_init(void) {
       lv_obj_t *header = lv_label_create(ui_Container_GaugeList);
       lv_label_set_text(header, gauges[i]);
       lv_obj_set_style_text_color(header, lv_color_hex(0x00FF88), 0);
-      lv_obj_set_style_text_font(header, &lv_font_montserrat_14, 0);
+      lv_obj_set_style_text_font(header, &montserrat_20_en_ru,
+                                 0); // Cyrillic support
       lv_obj_set_style_pad_top(header, 10, 0);
     } else {
       lv_obj_t *cb = lv_checkbox_create(ui_Container_GaugeList);
@@ -601,8 +647,9 @@ void ui_Screen6_screen_init(void) {
   }
 
   ui_Container_PlatformList = lv_obj_create(ui_Screen6);
-  lv_obj_set_size(ui_Container_PlatformList, 340, 875); // Slightly smaller
-  lv_obj_align(ui_Container_PlatformList, LV_ALIGN_TOP_RIGHT, -15, 335);
+  lv_obj_set_size(ui_Container_PlatformList, 340, 450);
+  lv_obj_align(ui_Container_PlatformList, LV_ALIGN_TOP_RIGHT, -15, 300);
+  lv_obj_set_scrollbar_mode(ui_Container_PlatformList, LV_SCROLLBAR_MODE_AUTO);
   lv_obj_set_style_bg_color(ui_Container_PlatformList, lv_color_hex(0x1a1a1a),
                             0);
   lv_obj_set_style_border_width(ui_Container_PlatformList, 1, 0);
@@ -622,16 +669,108 @@ void ui_Screen6_screen_init(void) {
                         NULL);
   }
 
+  // --- New WiFi Stats Panel ---
+  lv_obj_t *wifi_title_lbl = lv_label_create(ui_Screen6);
+  lv_label_set_text(wifi_title_lbl, "WiFi Status:");
+  lv_obj_set_style_text_color(wifi_title_lbl, lv_color_hex(0x00D4FF), 0);
+  lv_obj_align(wifi_title_lbl, LV_ALIGN_TOP_LEFT, 15, 770);
+
+  ui_Container_WiFiStats = lv_obj_create(ui_Screen6);
+  lv_obj_set_size(ui_Container_WiFiStats, 323, 428); // 5% smaller
+  lv_obj_align(ui_Container_WiFiStats, LV_ALIGN_TOP_LEFT, 15, 800);
+  lv_obj_set_style_bg_color(ui_Container_WiFiStats, lv_color_hex(0x1a1a1a), 0);
+  lv_obj_set_style_border_width(ui_Container_WiFiStats, 1, 0);
+  lv_obj_set_style_border_color(ui_Container_WiFiStats, lv_color_hex(0x00D4FF),
+                                0);
+  lv_obj_set_flex_flow(ui_Container_WiFiStats, LV_FLEX_FLOW_COLUMN);
+
+  ui_Label_WiFiInfo = lv_label_create(ui_Container_WiFiStats);
+  lv_label_set_text(ui_Label_WiFiInfo, "SSID: -\nIP: -\nRSSI: -\nSpeed: -");
+  lv_obj_set_style_text_color(ui_Label_WiFiInfo, lv_color_white(), 0);
+  lv_obj_set_style_text_font(ui_Label_WiFiInfo, &montserrat_20_en_ru,
+                             0); // Cyrillic support
+
+  // --- New AI Status Panel ---
+  lv_obj_t *ai_title_lbl = lv_label_create(ui_Screen6);
+  lv_label_set_text(ai_title_lbl, "AI Assistant Status:");
+  lv_obj_set_style_text_color(ai_title_lbl, lv_color_hex(0x00FF88), 0);
+  lv_obj_align(ai_title_lbl, LV_ALIGN_TOP_RIGHT, -15, 770);
+
+  ui_Container_AIStatus = lv_obj_create(ui_Screen6);
+  lv_obj_set_size(ui_Container_AIStatus, 323, 428); // 5% smaller
+  lv_obj_align(ui_Container_AIStatus, LV_ALIGN_TOP_RIGHT, -20, 800);
+  lv_obj_set_style_bg_color(ui_Container_AIStatus, lv_color_hex(0x1a1a1a), 0);
+  lv_obj_set_style_border_width(ui_Container_AIStatus, 1, 0);
+  lv_obj_set_style_border_color(ui_Container_AIStatus, lv_color_hex(0x00FF88),
+                                0);
+  lv_obj_set_flex_flow(ui_Container_AIStatus, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_scrollbar_mode(ui_Container_AIStatus, LV_SCROLLBAR_MODE_AUTO);
+
+  ui_Label_AIInfo = lv_label_create(ui_Container_AIStatus);
+  lv_label_set_text(ui_Label_AIInfo, "AI: Idle\nWaiting for trigger...");
+  lv_obj_set_style_text_color(ui_Label_AIInfo, lv_color_white(), 0);
+  lv_obj_set_style_text_font(ui_Label_AIInfo, &montserrat_20_en_ru,
+                             0); // Cyrillic support
+  lv_label_set_long_mode(ui_Label_AIInfo, LV_LABEL_LONG_WRAP);
+  lv_obj_set_width(ui_Label_AIInfo,
+                   lv_pct(95)); // Slightly less than 100% for padding
+  lv_obj_set_height(ui_Label_AIInfo,
+                    LV_SIZE_CONTENT); // Auto height based on content
+  lv_obj_set_flex_grow(ui_Label_AIInfo,
+                       1); // Allow label to grow in flex container
+
   // Load saved settings and update button states
   ui_Screen6_load_settings();
   ui_Screen6_update_button_states();
 
   // Add navigation buttons if enabled in settings
   ui_create_standard_navigation_buttons(ui_Screen6);
+
+  // Start WiFi status update timer (every 2 seconds)
+  wifi_status_timer =
+      lv_timer_create(ui_Screen6_update_wifi_status, 2000, NULL);
+  ui_Screen6_update_wifi_status(NULL); // Initial update
+}
+
+// Update WiFi status dynamically
+void ui_Screen6_update_wifi_status(lv_timer_t *timer) {
+  if (!ui_Label_WiFiInfo)
+    return;
+
+  wifi_controller_info_t info;
+  wifi_controller_get_info(&info);
+
+  char status_text[128];
+  if (info.ssid[0] != '\0' && info.ip[0] != '\0') {
+    snprintf(status_text, sizeof(status_text),
+             "SSID: %s\nIP: %s\nRSSI: %d dBm\nSpeed: %d Mbps", info.ssid,
+             info.ip, info.rssi, info.speed);
+    lv_obj_set_style_text_color(ui_Label_WiFiInfo, lv_color_hex(0x00FF88), 0);
+  } else if (info.ssid[0] != '\0') {
+    snprintf(status_text, sizeof(status_text),
+             "SSID: %s\nConnecting...\nRSSI: -\nSpeed: -", info.ssid);
+    lv_obj_set_style_text_color(ui_Label_WiFiInfo, lv_color_hex(0xFFAA00), 0);
+  } else {
+    snprintf(status_text, sizeof(status_text),
+             "SSID: Not Connected\nIP: -\nRSSI: -\nSpeed: -");
+    lv_obj_set_style_text_color(ui_Label_WiFiInfo, lv_color_hex(0xFF6666), 0);
+  }
+  lv_label_set_text(ui_Label_WiFiInfo, status_text);
+}
+
+// Update AI status text
+void ui_Screen6_set_ai_info(const char *text) {
+  if (ui_Label_AIInfo) {
+    lv_label_set_text(ui_Label_AIInfo, text);
+  }
 }
 
 // Destroy Screen6
 void ui_Screen6_screen_destroy(void) {
+  if (wifi_status_timer) {
+    lv_timer_del(wifi_status_timer);
+    wifi_status_timer = NULL;
+  }
   if (ui_Screen6) {
     lv_obj_del(ui_Screen6);
     ui_Screen6 = NULL;

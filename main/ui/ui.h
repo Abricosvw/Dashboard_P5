@@ -20,6 +20,7 @@ LV_FONT_DECLARE(lv_font_montserrat_14);
 LV_FONT_DECLARE(lv_font_montserrat_24);
 LV_FONT_DECLARE(lv_font_montserrat_32);
 LV_FONT_DECLARE(lv_font_montserrat_48);
+LV_FONT_DECLARE(montserrat_20_en_ru);
 
 ///////////////////// SCREENS ////////////////////
 #include "screens/ui_Screen1.h"

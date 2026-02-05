@@ -97,47 +97,68 @@ static esp_err_t audio_codec_config(uint32_t sample_rate) {
   ESP_RETURN_ON_ERROR(es8311_write_reg(ES8311_REG_RESET, 0x80), TAG,
                       "Power-on failed");
 
-  // 2. Clock Management (Configure for MCLK = 256 * fs)
+  // 2. Clock Management (Configure for MCLK = 256 * fs = 4096000 @ 16kHz)
+  // From esp_codec_dev coeff_div table for {4096000, 16000}:
+  // pre_div=1, pre_multi=1(x1), adc_div=1, dac_div=1, fs_mode=0, lrck=0xff,
+  // bclk_div=4, adc_osr=0x10, dac_osr=0x20
   ESP_RETURN_ON_ERROR(es8311_write_reg(0x01, 0x3F), TAG,
-                      "Clk 01 failed"); // All clocks on
+                      "Clk 01 failed"); // All clocks on, MCLK from MCLK pin
   ESP_RETURN_ON_ERROR(es8311_write_reg(0x02, 0x00), TAG,
-                      "Clk 02 failed"); // Pre-div 1
+                      "Clk 02 failed"); // Pre-div=1, pre_multi=x1 (0<<5 | 0<<3)
   ESP_RETURN_ON_ERROR(es8311_write_reg(0x03, 0x10), TAG,
-                      "Clk 03 failed"); // OSR 16 (Single Speed)
-  ESP_RETURN_ON_ERROR(es8311_write_reg(0x04, 0x10), TAG,
-                      "Clk 04 failed"); // DAC OSR 16
+                      "Clk 03 failed"); // fs_mode=0, adc_osr=0x10
+  ESP_RETURN_ON_ERROR(es8311_write_reg(0x04, 0x20), TAG,
+                      "Clk 04 failed"); // DAC OSR = 0x20 (from esp_codec_dev!)
   ESP_RETURN_ON_ERROR(es8311_write_reg(0x05, 0x00), TAG,
-                      "Clk 05 failed"); // ADC/DAC div 1
+                      "Clk 05 failed"); // ADC/DAC div = 1
   ESP_RETURN_ON_ERROR(es8311_write_reg(0x06, 0x03), TAG,
-                      "Clk 06 failed"); // BCLK=MCLK/4 (64fs)
+                      "Clk 06 failed"); // BCLK div = 4-1 = 3
   ESP_RETURN_ON_ERROR(es8311_write_reg(0x07, 0x00), TAG,
                       "Clk 07 failed"); // LRCK div High
   ESP_RETURN_ON_ERROR(es8311_write_reg(0x08, 0xFF), TAG,
-                      "Clk 08 failed"); // LRCK div Low (256)
+                      "Clk 08 failed"); // LRCK div Low = 0xFF
 
   // 3. Serial Data Format (16-bit I2S)
   ESP_RETURN_ON_ERROR(es8311_write_reg(0x09, 0x0C), TAG, "Format 09 failed");
   ESP_RETURN_ON_ERROR(es8311_write_reg(0x0A, 0x0C), TAG, "Format 0A failed");
 
-  // 4. Power Management & Signal Path
-  ESP_RETURN_ON_ERROR(es8311_write_reg(0x0D, 0x01), TAG,
-                      "Sys 0D failed"); // Analog power
-  ESP_RETURN_ON_ERROR(es8311_write_reg(0x0E, 0x02), TAG,
-                      "Sys 0E failed"); // ADC / PGA
-  ESP_RETURN_ON_ERROR(es8311_write_reg(0x12, 0x00), TAG,
-                      "Sys 12 failed"); // DAC power
-  ESP_RETURN_ON_ERROR(es8311_write_reg(0x13, 0x10), TAG,
-                      "Sys 13 failed"); // HP Drive enable
-  ESP_RETURN_ON_ERROR(es8311_write_reg(0x14, 0x1A), TAG,
-                      "Sys 14 failed"); // PGA Gain / Format
+  // Additional system registers from esp_codec_dev es8311_open()
+  ESP_RETURN_ON_ERROR(es8311_write_reg(0x0B, 0x00), TAG, "Sys 0B failed");
+  ESP_RETURN_ON_ERROR(es8311_write_reg(0x0C, 0x00), TAG, "Sys 0C failed");
+  ESP_RETURN_ON_ERROR(es8311_write_reg(0x10, 0x1F), TAG, "Sys 10 failed");
+  ESP_RETURN_ON_ERROR(es8311_write_reg(0x11, 0x7F), TAG, "Sys 11 failed");
 
-  // 5. User Specific: Mono Mix & Clean High Gain
-  ESP_RETURN_ON_ERROR(es8311_write_reg(0x43, 0x80), TAG,
-                      "Mono Mix failed"); // Stereo to Mono mix
-  ESP_RETURN_ON_ERROR(es8311_write_reg(0x38, 0x22), TAG,
-                      "Driver Gain failed"); // Max driver gain (+6dB)
-  ESP_RETURN_ON_ERROR(es8311_write_reg(0x17, 0xC0), TAG,
-                      "ADC Vol failed"); // ADC Vol 0dB
+  // 4. Power Management & Signal Path (from esp_codec_dev es8311_start)
+  ESP_RETURN_ON_ERROR(es8311_write_reg(0x0D, 0x01), TAG,
+                      "Sys 0D failed"); // Power up analog circuitry
+  ESP_RETURN_ON_ERROR(es8311_write_reg(0x0E, 0x02), TAG,
+                      "Sys 0E failed"); // Enable analog PGA, enable ADC
+  ESP_RETURN_ON_ERROR(es8311_write_reg(0x12, 0x00), TAG,
+                      "Sys 12 failed"); // Power-up DAC
+  ESP_RETURN_ON_ERROR(es8311_write_reg(0x13, 0x10), TAG,
+                      "Sys 13 failed"); // Enable output to HP drive
+
+  // 5. Microphone Configuration (from esp_codec_dev)
+  ESP_RETURN_ON_ERROR(es8311_write_reg(0x14, 0x1A), TAG,
+                      "Sys 14 failed"); // Analog MIC + max PGA gain
+  ESP_RETURN_ON_ERROR(es8311_write_reg(0x15, 0x40), TAG,
+                      "ADC 15 failed"); // ADC ramp rate (from es8311_start)
+  ESP_RETURN_ON_ERROR(es8311_write_reg(0x1B, 0x0A), TAG,
+                      "ADC 1B failed"); // ADC HPF settings (CRITICAL!)
+  ESP_RETURN_ON_ERROR(es8311_write_reg(0x1C, 0x6A), TAG,
+                      "ADC 1C failed"); // Bypass EQ + cancel DC offset
+
+  // Register 0x17: ADC volume = 0xBF (from es8311_start, NOT 0xC8!)
+  ESP_RETURN_ON_ERROR(es8311_write_reg(0x17, 0xBF), TAG,
+                      "ADC Vol failed"); // ADC gain 0xBF
+
+  // Internal reference signal (from es8311_open)
+  ESP_RETURN_ON_ERROR(es8311_write_reg(0x44, 0x50), TAG,
+                      "GPIO 44 failed"); // ADCL + DACR internal reference
+
+  // 6. DAC settings
+  ESP_RETURN_ON_ERROR(es8311_write_reg(0x37, 0x08), TAG,
+                      "DAC 37 failed"); // Bypass DAC equalizer
 
   // 6. Volume & Unmute
   audio_set_volume(s_current_volume_percent);
@@ -204,6 +225,8 @@ static esp_err_t audio_i2s_init(void) {
 
   i2s_std_config_t std_cfg = {
       .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(current_sample_rate),
+      // TX (speaker): STEREO for correct BCLK timing with ES8311 BCLK_div=4
+      // BCLK = fs*64 = 1024kHz @ 16kHz
       .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT,
                                                       I2S_SLOT_MODE_STEREO),
       .gpio_cfg =
@@ -218,9 +241,31 @@ static esp_err_t audio_i2s_init(void) {
   // Enable MCLK output
   std_cfg.clk_cfg.mclk_multiple = I2S_MCLK_MULTIPLE_256;
 
+  // Initialize TX with STEREO
   ESP_RETURN_ON_ERROR(i2s_channel_init_std_mode(tx_handle, &std_cfg), TAG,
                       "I2S TX init failed");
-  ESP_RETURN_ON_ERROR(i2s_channel_init_std_mode(rx_handle, &std_cfg), TAG,
+
+  // RX (microphone): Capture ONLY left channel explicitly
+  // ES8311 duplicates mono mic to both L&R on I2S bus
+  // We must use slot_mask to ignore right channel data
+  i2s_std_config_t rx_cfg = {
+      .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(current_sample_rate),
+      .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT,
+                                                      I2S_SLOT_MODE_STEREO),
+      .gpio_cfg =
+          {
+              .mclk = AUDIO_MCLK_IO,
+              .bclk = AUDIO_BCLK_IO,
+              .ws = AUDIO_WS_IO,
+              .dout = AUDIO_DOUT_IO,
+              .din = AUDIO_DIN_IO,
+          },
+  };
+  rx_cfg.clk_cfg.mclk_multiple = I2S_MCLK_MULTIPLE_256;
+  // NOTE: slot_mask doesn't work reliably - manual extraction instead
+  // rx_cfg.slot_cfg.slot_mask = I2S_STD_SLOT_LEFT;
+
+  ESP_RETURN_ON_ERROR(i2s_channel_init_std_mode(rx_handle, &rx_cfg), TAG,
                       "I2S RX init failed");
 
   ESP_RETURN_ON_ERROR(i2s_channel_enable(tx_handle), TAG,
@@ -419,8 +464,8 @@ esp_err_t audio_play_wav(const char *path) {
   }
 
   if (!s_audio_task_handle) {
-    xTaskCreate(audio_player_task, "audio_player", 4096, NULL, 5,
-                &s_audio_task_handle);
+    xTaskCreatePinnedToCore(audio_player_task, "audio_player", 4096, NULL, 5,
+                            &s_audio_task_handle, 0);
   }
 
   xEventGroupSetBits(s_audio_event_group, AUDIO_EVENT_START);
@@ -486,13 +531,24 @@ esp_err_t audio_record_wav(const char *path, uint32_t duration_ms) {
   memset(&header, 0, sizeof(wav_header_t));
   fwrite(&header, 1, sizeof(wav_header_t), f); // Reserve space
 
-  // Ensure Codec ADC is ready (Configure ADC Power/Volume)
-  es8311_write_reg(ES8311_REG_SYSTEM_0E, 0x00); // Power up ADC
-  es8311_write_reg(ES8311_REG_ADC_VOL, 0xC0);   // 0dB
+  // Ensure Codec ADC is ready (from esp_codec_dev)
+  es8311_write_reg(0x0E, 0x02);  // Enable analog PGA, enable ADC
+  es8311_write_reg(0x14, 0x1A);  // Analog MIC + max PGA gain
+  es8311_write_reg(0x15, 0x40);  // ADC ramp rate
+  es8311_write_reg(0x1B, 0x0A);  // ADC HPF settings (CRITICAL!)
+  es8311_write_reg(0x1C, 0x6A);  // Bypass EQ + cancel DC offset
+  es8311_write_reg(0x17, 0xBF);  // ADC volume 0xBF (from esp_codec_dev)
+  vTaskDelay(pdMS_TO_TICKS(50)); // Allow ADC to stabilize
 
-  size_t chunk_size = 1024;
-  int16_t *buffer = malloc(chunk_size);
-  if (!buffer) {
+  // CRITICAL: I2S RX reads STEREO data (L+R samples interleaved)
+  // We need to extract ONLY left channel for mono recording
+  size_t stereo_chunk_size = 2048; // Stereo buffer
+  int16_t *stereo_buffer = malloc(stereo_chunk_size);
+  int16_t *mono_buffer = malloc(stereo_chunk_size / 2); // Half size for mono
+
+  if (!stereo_buffer || !mono_buffer) {
+    free(stereo_buffer);
+    free(mono_buffer);
     fclose(f);
     return ESP_ERR_NO_MEM;
   }
@@ -502,17 +558,39 @@ esp_err_t audio_record_wav(const char *path, uint32_t duration_ms) {
   uint32_t start_time = xTaskGetTickCount();
   uint32_t target_ticks = pdMS_TO_TICKS(duration_ms);
 
+  static size_t debug_bytes_read_total = 0;
+  static size_t debug_bytes_written_total = 0;
+
   while ((xTaskGetTickCount() - start_time) < target_ticks) {
-    if (i2s_channel_read(rx_handle, buffer, chunk_size, &bytes_read, 100) ==
-        ESP_OK) {
-      fwrite(buffer, 1, bytes_read, f);
-      total_bytes += bytes_read;
+    if (i2s_channel_read(rx_handle, stereo_buffer, stereo_chunk_size,
+                         &bytes_read, 100) == ESP_OK) {
+      debug_bytes_read_total += bytes_read;
+
+      // CRITICAL FIX: ES8311 in STEREO mode sends L-R interleaved samples
+      // Each stereo frame = 2 samples × 2 bytes = 4 bytes total
+      // For mono: extract only LEFT channel (every 2nd int16_t sample)
+      size_t num_samples = bytes_read / 2;       // Total int16_t samples (L+R)
+      size_t num_mono_samples = num_samples / 2; // Only left channel
+
+      for (size_t i = 0; i < num_mono_samples; i++) {
+        mono_buffer[i] = stereo_buffer[i * 2]; // Take L, skip R
+      }
+
+      size_t mono_bytes = num_mono_samples * 2; // int16_t = 2 bytes
+      fwrite(mono_buffer, 1, mono_bytes, f);
+      total_bytes += mono_bytes;
+      debug_bytes_written_total += mono_bytes;
     } else {
       vTaskDelay(1); // Yield if no data
     }
   }
 
-  free(buffer);
+  ESP_LOGI(TAG,
+           "Recording stats: Read %zu bytes (stereo) → Wrote %zu bytes (mono)",
+           debug_bytes_read_total, debug_bytes_written_total);
+
+  free(stereo_buffer);
+  free(mono_buffer);
 
   // Finalize WAV Header
   memcpy(header.riff_header, "RIFF", 4);
@@ -521,12 +599,12 @@ esp_err_t audio_record_wav(const char *path, uint32_t duration_ms) {
   memcpy(header.fmt_header, "fmt ", 4);
   header.fmt_chunk_size = 16;
   header.audio_format = 1; // PCM
-  header.num_channels = 2; // Stereo (I2S config is stereo)
+  header.num_channels = 1; // MONO (I2S RX is MONO)
   header.sample_rate = current_sample_rate;
   header.bit_depth = 16;
   header.byte_rate =
-      current_sample_rate * 2 * 2; // Rate * Channels * BytesPerSample
-  header.sample_alignment = 4;
+      current_sample_rate * 1 * 2; // Rate * Channels(1) * BytesPerSample
+  header.sample_alignment = 2;     // Channels(1) * BytesPerSample
   memcpy(header.data_header, "data", 4);
   header.data_bytes = total_bytes;
 

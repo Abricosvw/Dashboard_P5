@@ -3,7 +3,7 @@
 
 #include "ui_Screen3.h"
 #include "../ui.h"
-#include "can_logger.h" // Include logger
+#include "can_logger.h"
 #include "can_manager.h"
 #include "ui_Screen1.h"
 #include "ui_Screen2.h"
@@ -449,7 +449,7 @@ void ui_Screen3_screen_init(void) {
   lv_obj_set_style_border_width((lv_obj_t *)ui_TextArea_Search, 0, 0);
   lv_obj_set_style_radius((lv_obj_t *)ui_TextArea_Search, 5, 0);
   lv_obj_set_style_text_font((lv_obj_t *)ui_TextArea_Search,
-                             &lv_font_montserrat_12, 0);
+                             &montserrat_20_en_ru, 0);
   lv_textarea_set_placeholder_text((lv_obj_t *)ui_TextArea_Search,
                                    "Enter search text...");
   lv_obj_add_event_cb((lv_obj_t *)ui_TextArea_Search, search_text_event_cb,
