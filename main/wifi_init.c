@@ -154,7 +154,8 @@ esp_err_t wifi_init_ap(const char *ssid, const char *pass) {
     wifi_config.ap.authmode = WIFI_AUTH_OPEN;
   }
 
-  esp_err_t err = esp_wifi_set_mode(WIFI_MODE_AP);
+  // Use APSTA mode to enable WiFi scanning (ESP-Hosted requires STA for scan)
+  esp_err_t err = esp_wifi_set_mode(WIFI_MODE_APSTA);
   if (err != ESP_OK)
     return err;
   err = esp_wifi_set_config(WIFI_IF_AP, &wifi_config);
@@ -163,6 +164,10 @@ esp_err_t wifi_init_ap(const char *ssid, const char *pass) {
   err = esp_wifi_start();
   if (err != ESP_OK)
     return err;
+
+  // Start AI Manager even in AP mode
+  ai_manager_init();
+  ai_manager_start();
 
   return ESP_OK;
 }
@@ -272,6 +277,12 @@ esp_err_t wifi_init_apsta(const char *ap_ssid, const char *ap_pass,
   ESP_LOGI(TAG, "WiFi AP+STA mode initialized successfully!");
   ESP_LOGI(TAG, "  AP IP: 192.168.4.1");
 
+  // CRITICAL FIX: Start AI Manager immediately so it can catch button clicks
+  // It doesn't need WiFi/Time to listen for Wake Word or Button.
+  // Network calls inside AI Manager will wait for time sync if needed.
+  ai_manager_init();
+  ai_manager_start();
+
   return ESP_OK;
 }
 
@@ -345,10 +356,8 @@ void ai_start_after_time_sync(void *pvParameters) {
   if (retry < retry_count) {
     ESP_LOGI(TAG, "Time synced successfully");
   } else {
-    ESP_LOGW(TAG, "Time sync timeout, proceeding anyway (SSL might fail)");
+    ESP_LOGW(TAG, "Time sync timeout, proceeding anyway");
   }
 
-  ai_manager_init();
-  ai_manager_start();
   vTaskDelete(NULL);
 }

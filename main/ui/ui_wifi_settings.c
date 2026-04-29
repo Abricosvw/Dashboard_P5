@@ -5,6 +5,7 @@
 #include "main_gui.h"
 #include "ui.h"
 #include "wifi_controller.h"
+#include "wifi_storage.h"
 #include <esp_log.h>
 #include <nvs.h>
 #include <nvs_flash.h>
@@ -23,198 +24,67 @@ static bool is_scanning = false;
 static uint8_t current_kb_lang = 0; // 0=EN, 1=RU
 
 // Control maps define button widths (lower 4 bits = width ratio)
-// Russian keyboard: Row1=13 btns, Row2=11 btns, Row3=11 btns, Row4=4 btns
+// Russian keyboard: Row1=13 btns, Row2=11 btns, Row3=12 btns, Row4=5 btns
 static const lv_btnmatrix_ctrl_t kb_ctrl_ru[] = {
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, // Row 1: 12 chars + backspace(wider)
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2,       // Row 2: 10 chars + enter(wider)
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2,       // Row 3: 10 chars + enter(wider)
-    2, 1, 5, 1 // Row 4: EN(wider) + arrows + space(wide)
+    2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, // Row 3: Shift(wider) + 9 chars + Enter
+    2, 2, 1, 4, 1 // Row 4: EN(wider) + 123(wider) + arrows + space(wide)
 };
 
-// English keyboard control map: Row1=11 btns, Row2=10 btns, Row3=11 btns,
-// Row4=4 btns
+// English keyboard control map: Row1=11 btns, Row2=10 btns, Row3=12 btns,
+// Row4=5 btns
 static const lv_btnmatrix_ctrl_t kb_ctrl_en[] = {
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, // Row 1: 10 chars + backspace(wider)
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 2,    // Row 2: 9 chars + enter(wider)
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // Row 3: 11 chars
-    2, 1, 5, 1                       // Row 4: RU(wider) + arrows + space(wide)
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2,    // Row 1: 10 chars + backspace(wider)
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 2,       // Row 2: 9 chars + enter(wider)
+    2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // Row 3: Shift(wider) + 11 chars
+    2, 2, 1, 4, 1 // Row 4: RU(wider) + 123(wider) + arrows + space(wide)
 };
 
 // Russian Cyrillic keyboard map (ЙЦУКЕН layout) - lowercase
-static const char *kb_map_ru[] = {"й",
-                                  "ц",
-                                  "у",
-                                  "к",
-                                  "е",
-                                  "н",
-                                  "г",
-                                  "ш",
-                                  "щ",
-                                  "з",
-                                  "х",
-                                  "ъ",
-                                  LV_SYMBOL_BACKSPACE,
-                                  "\n",
-                                  "ф",
-                                  "ы",
-                                  "в",
-                                  "а",
-                                  "п",
-                                  "р",
-                                  "о",
-                                  "л",
-                                  "д",
-                                  "ж",
-                                  "э",
-                                  "\n",
-                                  "я",
-                                  "ч",
-                                  "с",
-                                  "м",
-                                  "и",
-                                  "т",
-                                  "ь",
-                                  "б",
-                                  "ю",
-                                  ".",
-                                  LV_SYMBOL_NEW_LINE,
-                                  "\n",
-                                  "EN",
-                                  LV_SYMBOL_LEFT,
-                                  " ",
-                                  LV_SYMBOL_RIGHT,
-                                  ""};
+static const char *kb_map_ru[] = {
+    "й", "ц",     "у",  "к",    "е",   "н", "г",     "ш",  "щ",
+    "з", "х",     "ъ",  "Back", "\n",  "ф", "ы",     "в",  "а",
+    "п", "р",     "о",  "л",    "д",   "ж", "э",     "\n", "Shift",
+    "я", "ч",     "с",  "м",    "и",   "т", "ь",     "б",  "ю",
+    ".", "Enter", "\n", "EN",   "123", "<", "Space", ">",  ""};
 
 // Russian Cyrillic keyboard map - uppercase
-static const char *kb_map_ru_uc[] = {"Й",
-                                     "Ц",
-                                     "У",
-                                     "К",
-                                     "Е",
-                                     "Н",
-                                     "Г",
-                                     "Ш",
-                                     "Щ",
-                                     "З",
-                                     "Х",
-                                     "Ъ",
-                                     LV_SYMBOL_BACKSPACE,
-                                     "\n",
-                                     "Ф",
-                                     "Ы",
-                                     "В",
-                                     "А",
-                                     "П",
-                                     "Р",
-                                     "О",
-                                     "Л",
-                                     "Д",
-                                     "Ж",
-                                     "Э",
-                                     "\n",
-                                     "Я",
-                                     "Ч",
-                                     "С",
-                                     "М",
-                                     "И",
-                                     "Т",
-                                     "Ь",
-                                     "Б",
-                                     "Ю",
-                                     ".",
-                                     LV_SYMBOL_NEW_LINE,
-                                     "\n",
-                                     "EN",
-                                     LV_SYMBOL_LEFT,
-                                     " ",
-                                     LV_SYMBOL_RIGHT,
-                                     ""};
+static const char *kb_map_ru_uc[] = {
+    "Й", "Ц",     "У",  "К",    "Е",   "Н", "Г",     "Ш",  "Щ",
+    "З", "Х",     "Ъ",  "Back", "\n",  "Ф", "Ы",     "В",  "А",
+    "П", "Р",     "О",  "Л",    "Д",   "Ж", "Э",     "\n", "Shift",
+    "Я", "Ч",     "С",  "М",    "И",   "Т", "Ь",     "Б",  "Ю",
+    ".", "Enter", "\n", "EN",   "123", "<", "Space", ">",  ""};
 
 // English QWERTY keyboard map - lowercase
-static const char *kb_map_en[] = {"q",
-                                  "w",
-                                  "e",
-                                  "r",
-                                  "t",
-                                  "y",
-                                  "u",
-                                  "i",
-                                  "o",
-                                  "p",
-                                  LV_SYMBOL_BACKSPACE,
-                                  "\n",
-                                  "a",
-                                  "s",
-                                  "d",
-                                  "f",
-                                  "g",
-                                  "h",
-                                  "j",
-                                  "k",
-                                  "l",
-                                  LV_SYMBOL_NEW_LINE,
-                                  "\n",
-                                  "z",
-                                  "x",
-                                  "c",
-                                  "v",
-                                  "b",
-                                  "n",
-                                  "m",
-                                  ".",
-                                  ",",
-                                  "?",
-                                  "!",
-                                  "\n",
-                                  "RU",
-                                  LV_SYMBOL_LEFT,
-                                  " ",
-                                  LV_SYMBOL_RIGHT,
-                                  ""};
+static const char *kb_map_en[] = {
+    "q",  "w",     "e",  "r",  "t",   "y", "u",     "i", "o", "p", "Back",
+    "\n", "a",     "s",  "d",  "f",   "g", "h",     "j", "k", "l", "Enter",
+    "\n", "Shift", "z",  "x",  "c",   "v", "b",     "n", "m", ".", ",",
+    "?",  "!",     "\n", "RU", "123", "<", "Space", ">", ""};
 
 // English QWERTY keyboard map - uppercase
-static const char *kb_map_en_uc[] = {"Q",
-                                     "W",
-                                     "E",
-                                     "R",
-                                     "T",
-                                     "Y",
-                                     "U",
-                                     "I",
-                                     "O",
-                                     "P",
-                                     LV_SYMBOL_BACKSPACE,
-                                     "\n",
-                                     "A",
-                                     "S",
-                                     "D",
-                                     "F",
-                                     "G",
-                                     "H",
-                                     "J",
-                                     "K",
-                                     "L",
-                                     LV_SYMBOL_NEW_LINE,
-                                     "\n",
-                                     "Z",
-                                     "X",
-                                     "C",
-                                     "V",
-                                     "B",
-                                     "N",
-                                     "M",
-                                     ".",
-                                     ",",
-                                     "?",
-                                     "!",
-                                     "\n",
-                                     "RU",
-                                     LV_SYMBOL_LEFT,
-                                     " ",
-                                     LV_SYMBOL_RIGHT,
-                                     ""};
+static const char *kb_map_en_uc[] = {
+    "Q",  "W",     "E",  "R",  "T",   "Y", "U",     "I", "O", "P", "Back",
+    "\n", "A",     "S",  "D",  "F",   "G", "H",     "J", "K", "L", "Enter",
+    "\n", "Shift", "Z",  "X",  "C",   "V", "B",     "N", "M", ".", ",",
+    "?",  "!",     "\n", "RU", "123", "<", "Space", ">", ""};
 
-// Keyboard value changed callback - handles EN/RU button clicks on keyboard
+// Custom numeric map for WiFi password entry
+static const char *kb_map_num[] = {"1",  "2",   "3",  "Back",  "\n", "4", "5",
+                                   "6",  ".",   "\n", "7",     "8",  "9", "+/-",
+                                   "\n", "ABC", "0",  "Enter", ""};
+
+static const lv_btnmatrix_ctrl_t kb_ctrl_num[] = {
+    1, 1, 1, 2, // Row 1
+    1, 1, 1, 2, // Row 2
+    1, 1, 1, 2, // Row 3
+    2, 2, 3     // Row 4
+};
+
+// Keyboard value changed callback - handles EN/RU, 123, and manual control
+// buttons
 static void kb_value_cb(lv_event_t *e) {
   lv_obj_t *keyboard = lv_event_get_target(e);
   uint16_t btn_id = lv_btnmatrix_get_selected_btn(keyboard);
@@ -225,10 +95,93 @@ static void kb_value_cb(lv_event_t *e) {
   if (!txt)
     return;
 
+  lv_obj_t *ta = lv_keyboard_get_textarea(keyboard);
+
+  // Check if 123 button was clicked - switch to number mode
+  if (strcmp(txt, "123") == 0) {
+    if (ta) {
+      for (int i = 0; i < 3; i++)
+        lv_textarea_del_char(ta); // Remove "123"
+    }
+    // Force lowercase mode before applying map to ensure it's visible
+    lv_keyboard_set_mode(keyboard, LV_KEYBOARD_MODE_TEXT_LOWER);
+    lv_keyboard_set_map(keyboard, LV_KEYBOARD_MODE_TEXT_LOWER, kb_map_num,
+                        kb_ctrl_num);
+    ESP_LOGI(TAG, "Switched to custom Number keyboard");
+    return;
+  }
+
+  // Check if ABC button was clicked - switch back to text mode
+  if (strcmp(txt, "ABC") == 0 || strcmp(txt, "abc") == 0) {
+    if (ta) {
+      // Small optimization: ABC is 3, abc is 3
+      for (int i = 0; i < 3; i++)
+        lv_textarea_del_char(ta); // Remove "ABC" or "abc"
+    }
+    // Restore custom layout based on current language
+    lv_keyboard_set_mode(keyboard, LV_KEYBOARD_MODE_TEXT_LOWER);
+    if (current_kb_lang == 1) {
+      lv_keyboard_set_map(keyboard, LV_KEYBOARD_MODE_TEXT_LOWER, kb_map_ru,
+                          kb_ctrl_ru);
+      lv_keyboard_set_map(keyboard, LV_KEYBOARD_MODE_TEXT_UPPER, kb_map_ru_uc,
+                          kb_ctrl_ru);
+    } else {
+      lv_keyboard_set_map(keyboard, LV_KEYBOARD_MODE_TEXT_LOWER, kb_map_en,
+                          kb_ctrl_en);
+      lv_keyboard_set_map(keyboard, LV_KEYBOARD_MODE_TEXT_UPPER, kb_map_en_uc,
+                          kb_ctrl_en);
+    }
+    ESP_LOGI(TAG, "Switched back to Text keyboard");
+    return;
+  }
+
+  // Handle manual control buttons (since they are now text, LVGL added them to
+  // ta)
+  if (ta) {
+    if (strcmp(txt, "Back") == 0) {
+      for (int i = 0; i < 4; i++)
+        lv_textarea_del_char(ta); // Remove "Back"
+      lv_textarea_del_char(ta);   // Actual backspace
+      return;
+    } else if (strcmp(txt, "Enter") == 0) {
+      for (int i = 0; i < 5; i++)
+        lv_textarea_del_char(ta); // Remove "Enter"
+      lv_event_send(keyboard, LV_EVENT_READY, NULL);
+      return;
+    } else if (strcmp(txt, "Space") == 0) {
+      for (int i = 0; i < 5; i++)
+        lv_textarea_del_char(ta); // Remove "Space"
+      lv_textarea_add_text(ta, " ");
+      return;
+    } else if (strcmp(txt, "<") == 0) {
+      lv_textarea_del_char(ta); // Remove "<"
+      lv_textarea_cursor_left(ta);
+      return;
+    } else if (strcmp(txt, ">") == 0) {
+      lv_textarea_del_char(ta); // Remove ">"
+      lv_textarea_cursor_right(ta);
+      return;
+    } else if (strcmp(txt, "Shift") == 0) {
+      for (int i = 0; i < 5; i++)
+        lv_textarea_del_char(ta); // Remove "Shift"
+      lv_keyboard_mode_t mode = lv_keyboard_get_mode(keyboard);
+      if (mode == LV_KEYBOARD_MODE_TEXT_LOWER)
+        lv_keyboard_set_mode(keyboard, LV_KEYBOARD_MODE_TEXT_UPPER);
+      else
+        lv_keyboard_set_mode(keyboard, LV_KEYBOARD_MODE_TEXT_LOWER);
+      return;
+    }
+  }
+
   // Check if EN or RU button was clicked
   if (strcmp(txt, "EN") == 0 || strcmp(txt, "RU") == 0) {
+    if (ta) {
+      for (int i = 0; i < 2; i++)
+        lv_textarea_del_char(ta); // Remove "EN" or "RU"
+    }
     current_kb_lang = !current_kb_lang; // Toggle 0<->1
 
+    lv_keyboard_set_mode(keyboard, LV_KEYBOARD_MODE_TEXT_LOWER);
     if (current_kb_lang == 1) {
       // Switch to Russian
       lv_keyboard_set_map(keyboard, LV_KEYBOARD_MODE_TEXT_LOWER, kb_map_ru,
@@ -319,16 +272,7 @@ static void connect_click_cb(lv_event_t *e) {
   const char *pwd = lv_textarea_get_text(pwd_ta);
   ESP_LOGI(TAG, "Connecting to %s", selected_ssid);
 
-  // Save WiFi credentials to NVS
-  nvs_handle_t nvs_handle;
-  if (nvs_open("wifi_creds", NVS_READWRITE, &nvs_handle) == ESP_OK) {
-    nvs_set_str(nvs_handle, "ssid", selected_ssid);
-    nvs_set_str(nvs_handle, "password", pwd);
-    nvs_commit(nvs_handle);
-    nvs_close(nvs_handle);
-    ESP_LOGI(TAG, "WiFi credentials saved to NVS");
-  }
-
+  wifi_storage_save(selected_ssid, pwd);
   wifi_controller_connect_to_ap(selected_ssid, pwd);
 
   close_popup_cb(NULL);
@@ -404,6 +348,25 @@ static void ssid_select_cb(lv_event_t *e) {
     lv_keyboard_set_map(kb, LV_KEYBOARD_MODE_TEXT_UPPER, kb_map_en_uc,
                         kb_ctrl_en);
     current_kb_lang = 0; // Start with EN
+
+    // PRE-FILL Saved Password if SSID matches
+    nvs_handle_t nvs_handle;
+    if (nvs_open("wifi_creds", NVS_READONLY, &nvs_handle) == ESP_OK) {
+      char saved_ssid[33] = {0};
+      size_t ssid_len = sizeof(saved_ssid);
+      if (nvs_get_str(nvs_handle, "ssid", saved_ssid, &ssid_len) == ESP_OK) {
+        if (strcmp(saved_ssid, selected_ssid) == 0) {
+          char saved_pwd[64] = {0};
+          size_t pwd_len = sizeof(saved_pwd);
+          if (nvs_get_str(nvs_handle, "password", saved_pwd, &pwd_len) ==
+              ESP_OK) {
+            lv_textarea_set_text(pwd_ta, saved_pwd);
+            ESP_LOGI(TAG, "Pre-filled password for %s", selected_ssid);
+          }
+        }
+      }
+      nvs_close(nvs_handle);
+    }
 
     // Add callbacks for language toggle and standard keyboard events
     lv_obj_add_event_cb(kb, kb_value_cb, LV_EVENT_VALUE_CHANGED, NULL);

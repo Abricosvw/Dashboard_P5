@@ -212,8 +212,12 @@ void settings_save(const touch_settings_t *settings_to_save) {
   }
 
   // Save to SD Card as JSON
-  char json_buffer[1024];
-  settings_to_json(settings_to_save, json_buffer, sizeof(json_buffer));
+  char *json_buffer = malloc(1024);
+  if (!json_buffer) {
+    ESP_LOGE(TAG, "Failed to allocate memory for JSON serialization");
+    return;
+  }
+  settings_to_json(settings_to_save, json_buffer, 1024);
 
   ESP_LOGI(TAG, "Attempting to save settings to SD card...");
 
@@ -222,6 +226,7 @@ void settings_save(const touch_settings_t *settings_to_save) {
       xSemaphoreTake(sd_card_mutex, pdMS_TO_TICKS(2000)) != pdTRUE) {
     ESP_LOGE(TAG,
              "Failed to take SD card mutex for writing, operation aborted");
+    free(json_buffer);
     return;
   }
 
@@ -244,6 +249,7 @@ void settings_save(const touch_settings_t *settings_to_save) {
 
   // Release mutex after file operations
   xSemaphoreGive(sd_card_mutex);
+  free(json_buffer);
 
   if (result == ESP_OK) {
     ESP_LOGI(TAG, "Settings saved to SD card successfully.");
@@ -316,8 +322,15 @@ esp_err_t settings_load(void) {
 
   FILE *f = fopen(SD_MOUNT_POINT "/settings.cfg", "r");
   if (f != NULL) {
-    char buffer[1024] = {0};
-    size_t bytes_read = fread(buffer, 1, sizeof(buffer) - 1, f);
+    char *buffer = malloc(1024);
+    if (!buffer) {
+      ESP_LOGE(TAG, "Failed to allocate memory for reading settings");
+      fclose(f);
+      xSemaphoreGive(sd_card_mutex);
+      return ESP_ERR_NO_MEM;
+    }
+    memset(buffer, 0, 1024);
+    size_t bytes_read = fread(buffer, 1, 1023, f);
 
     fclose(f);
 
@@ -340,9 +353,11 @@ esp_err_t settings_load(void) {
       // Apply platform setting
       can_parser_set_platform(current_settings.can_platform);
 
+      free(buffer);
       return ESP_OK;
     } else {
       ESP_LOGW(TAG, "Failed to parse settings.cfg, using defaults.");
+      free(buffer);
       settings_init_defaults(&current_settings);
       return ESP_FAIL;
     }

@@ -236,10 +236,15 @@ esp_err_t board_init_display(esp_lcd_panel_handle_t *ret_panel,
         .mode = GPIO_MODE_OUTPUT,
     };
     gpio_config(&io_conf);
+    ESP_LOGI(TAG, "    - GPIO config done for reset pin");
     gpio_set_level(LCD_RST_IO, 0);
+    ESP_LOGI(TAG, "    - Reset pin pulled LOW");
     vTaskDelay(pdMS_TO_TICKS(100));
+    ESP_LOGI(TAG, "    - Delay 100ms done");
     gpio_set_level(LCD_RST_IO, 1);
+    ESP_LOGI(TAG, "    - Reset pin pushed HIGH");
     vTaskDelay(pdMS_TO_TICKS(500)); // Increased wait for hardware sync
+    ESP_LOGI(TAG, "    - Delay 500ms done, hardware reset sequence complete");
   }
 
   // 4. Configure DPI panel - 736px WIDTH FOR STRIDE ALIGNMENT

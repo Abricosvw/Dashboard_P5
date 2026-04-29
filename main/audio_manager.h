@@ -81,3 +81,6 @@ esp_err_t audio_stop(void);
  * @brief Check if audio is currently playing
  */
 bool audio_is_playing(void);
+
+#include "driver/i2s_std.h"
+i2s_chan_handle_t audio_get_rx_handle(void);

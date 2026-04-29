@@ -42,6 +42,7 @@ void *ui_Button_Reset_Settings;
 void *ui_Button_AI;          // AI Button
 void *ui_Button_Intro_Sound; // Intro Sound Button
 void *ui_Button_Wifi;        // WiFi Settings Button
+void *ui_Button_Voice_AI;    // Voice AI Toggle Button
 void *ui_Label_Intro_Sound;
 void *ui_Label_Demo_Mode;
 void *ui_Label_Enable_Screen3;
@@ -56,14 +57,9 @@ static lv_obj_t *ui_Container_GaugeList = NULL;
 // Platform List Container
 static lv_obj_t *ui_Container_PlatformList = NULL;
 
-// New WiFi and AI Status Objects
-lv_obj_t *ui_Container_WiFiStats = NULL;
+// AI Status Objects (WiFi Status removed)
 lv_obj_t *ui_Container_AIStatus = NULL;
-lv_obj_t *ui_Label_WiFiInfo = NULL;
 lv_obj_t *ui_Label_AIInfo = NULL;
-
-// Timer for WiFi status updates
-static lv_timer_t *wifi_status_timer = NULL;
 
 // Settings state
 static int settings_modified = 0;
@@ -108,7 +104,8 @@ static void platform_checkbox_event_cb(lv_event_t *e);
 static void ai_button_event_cb(lv_event_t *e); // New callback
 static void intro_sound_event_cb(lv_event_t *e);
 static void wifi_button_event_cb(lv_event_t *e);
-void ui_Screen6_update_wifi_status(lv_timer_t *timer); // WiFi status update
+static void voice_ai_event_cb(lv_event_t *e);
+// WiFi status update removed
 
 void ui_update_touch_cursor_screen6(void *point);
 
@@ -186,10 +183,17 @@ static void ai_button_event_cb(lv_event_t *e) {
     // Trigger AI listening
     ai_manager_trigger_listening();
 
-    // Reset to original color (green) after recording complete
-    lv_obj_set_style_bg_color(btn, lv_color_hex(0x00FF88), 0);
-
     ESP_LOGI("SCREEN6", "AI Listening Triggered");
+  }
+}
+
+// Reset AI button color to green (called from ai_manager task)
+void ui_Screen6_reset_ai_button(void) {
+  if (ai_button_ref) {
+    lv_obj_set_style_bg_color(ai_button_ref, lv_color_hex(0x00FF88), 0);
+  } else if (ui_Button_AI) {
+    lv_obj_set_style_bg_color((lv_obj_t *)ui_Button_AI, lv_color_hex(0x00FF88),
+                              0);
   }
 }
 
@@ -206,6 +210,18 @@ static void wifi_button_event_cb(lv_event_t *e) {
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     ui_show_wifi_settings();
     ESP_LOGI("SCREEN6", "WiFi settings popup triggered");
+  }
+}
+
+static bool voice_ai_active = false;
+static void voice_ai_event_cb(lv_event_t *e) {
+  if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+    voice_ai_active = !voice_ai_active;
+    ai_manager_set_voice_activation(voice_ai_active);
+    ui_Screen6_update_button_states();
+    settings_modified = 1;
+    ESP_LOGI("SCREEN6", "Voice AI toggled to: %s",
+             voice_ai_active ? "ON" : "OFF");
   }
 }
 
@@ -494,134 +510,161 @@ void ui_Screen6_screen_init(void) {
                              &montserrat_20_en_ru, 0); // Cyrillic support
   lv_obj_align((lv_obj_t *)ui_Label_Device_Title, LV_ALIGN_TOP_MID, 0, 10);
 
-  // Settings Buttons - 2x3 Grid at Top
-  int btn_w = 340;
-  int btn_h = 45;
-  int btn_x_left = 15;
-  int btn_x_right = 365;
+  // Settings Buttons - Vertical column on the left side
+  int btn_w = 180; // Smaller width
+  int btn_h = 50;  // Smaller height
+  int btn_x = 10;  // Left position
+  int btn_start_y = 45;
+  int btn_gap = 55; // Vertical gap between buttons
 
-  // Row 1
+  // Button 1 - Demo Mode
   ui_Button_Demo_Mode = lv_btn_create(ui_Screen6);
   lv_obj_set_size((lv_obj_t *)ui_Button_Demo_Mode, btn_w, btn_h);
-  lv_obj_align((lv_obj_t *)ui_Button_Demo_Mode, LV_ALIGN_TOP_LEFT, btn_x_left,
-               50);
+  lv_obj_align((lv_obj_t *)ui_Button_Demo_Mode, LV_ALIGN_TOP_LEFT, btn_x,
+               btn_start_y);
   lv_obj_set_style_bg_color((lv_obj_t *)ui_Button_Demo_Mode,
                             lv_color_hex(0x333333), 0);
   lv_obj_add_event_cb((lv_obj_t *)ui_Button_Demo_Mode, demo_mode_event_cb,
                       LV_EVENT_CLICKED, NULL);
   ui_Label_Demo_Mode = lv_label_create((lv_obj_t *)ui_Button_Demo_Mode);
-  lv_label_set_text(ui_Label_Demo_Mode, "Demo Mode: OFF");
+  lv_label_set_text(ui_Label_Demo_Mode, "Demo: OFF");
   lv_obj_center(ui_Label_Demo_Mode);
 
+  // Button 2 - Terminal Screen
   ui_Button_Enable_Screen3 = lv_btn_create(ui_Screen6);
   lv_obj_set_size((lv_obj_t *)ui_Button_Enable_Screen3, btn_w, btn_h);
-  lv_obj_align((lv_obj_t *)ui_Button_Enable_Screen3, LV_ALIGN_TOP_LEFT,
-               btn_x_right, 50);
+  lv_obj_align((lv_obj_t *)ui_Button_Enable_Screen3, LV_ALIGN_TOP_LEFT, btn_x,
+               btn_start_y + btn_gap);
   lv_obj_add_event_cb((lv_obj_t *)ui_Button_Enable_Screen3,
                       enable_screen3_event_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *s3_label = lv_label_create((lv_obj_t *)ui_Button_Enable_Screen3);
-  lv_label_set_text(s3_label, "Terminal Screen");
+  lv_label_set_text(s3_label, "Terminal");
   lv_obj_center(s3_label);
 
-  // Row 2
+  // Button 3 - Nav Buttons
   ui_Button_Nav_Buttons = lv_btn_create(ui_Screen6);
   lv_obj_set_size((lv_obj_t *)ui_Button_Nav_Buttons, btn_w, btn_h);
-  lv_obj_align((lv_obj_t *)ui_Button_Nav_Buttons, LV_ALIGN_TOP_LEFT, btn_x_left,
-               105);
+  lv_obj_align((lv_obj_t *)ui_Button_Nav_Buttons, LV_ALIGN_TOP_LEFT, btn_x,
+               btn_start_y + btn_gap * 2);
   lv_obj_add_event_cb((lv_obj_t *)ui_Button_Nav_Buttons, nav_buttons_event_cb,
                       LV_EVENT_CLICKED, NULL);
   lv_obj_t *nav_label = lv_label_create((lv_obj_t *)ui_Button_Nav_Buttons);
-  lv_label_set_text(nav_label, "Nav Buttons");
+  lv_label_set_text(nav_label, "Nav Btns");
   lv_obj_center(nav_label);
 
+  // Button 4 - Save Settings
   ui_Button_Save_Settings = lv_btn_create(ui_Screen6);
   lv_obj_set_size((lv_obj_t *)ui_Button_Save_Settings, btn_w, btn_h);
-  lv_obj_align((lv_obj_t *)ui_Button_Save_Settings, LV_ALIGN_TOP_LEFT,
-               btn_x_right, 105);
+  lv_obj_align((lv_obj_t *)ui_Button_Save_Settings, LV_ALIGN_TOP_LEFT, btn_x,
+               btn_start_y + btn_gap * 3);
   lv_obj_set_style_bg_color((lv_obj_t *)ui_Button_Save_Settings,
                             lv_color_hex(0x00FF88), 0);
   lv_obj_add_event_cb((lv_obj_t *)ui_Button_Save_Settings,
                       save_settings_event_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *save_lbl = lv_label_create((lv_obj_t *)ui_Button_Save_Settings);
-  lv_label_set_text(save_lbl, "SAVE SETTINGS");
+  lv_label_set_text(save_lbl, "SAVE");
   lv_obj_set_style_text_color(save_lbl, lv_color_black(), 0);
   lv_obj_center(save_lbl);
 
-  // Row 3
+  // Button 5 - AI Assistant
   ui_Button_AI = lv_btn_create(ui_Screen6);
   lv_obj_set_size((lv_obj_t *)ui_Button_AI, btn_w, btn_h);
-  lv_obj_align((lv_obj_t *)ui_Button_AI, LV_ALIGN_TOP_LEFT, btn_x_left, 160);
+  lv_obj_align((lv_obj_t *)ui_Button_AI, LV_ALIGN_TOP_LEFT, btn_x,
+               btn_start_y + btn_gap * 4);
   lv_obj_set_style_bg_color((lv_obj_t *)ui_Button_AI, lv_color_hex(0x00D4FF),
                             0);
   lv_obj_add_event_cb((lv_obj_t *)ui_Button_AI, ai_button_event_cb,
                       LV_EVENT_CLICKED, NULL);
   lv_obj_t *ai_lbl = lv_label_create((lv_obj_t *)ui_Button_AI);
-  lv_label_set_text(ai_lbl, "AI ASSISTANT");
+  lv_label_set_text(ai_lbl, "AI");
   lv_obj_set_style_text_color(ai_lbl, lv_color_black(), 0);
   lv_obj_center(ai_lbl);
 
+  // Button 6 - Reset Settings
   ui_Button_Reset_Settings = lv_btn_create(ui_Screen6);
   lv_obj_set_size((lv_obj_t *)ui_Button_Reset_Settings, btn_w, btn_h);
-  lv_obj_align((lv_obj_t *)ui_Button_Reset_Settings, LV_ALIGN_TOP_LEFT,
-               btn_x_right, 160);
+  lv_obj_align((lv_obj_t *)ui_Button_Reset_Settings, LV_ALIGN_TOP_LEFT, btn_x,
+               btn_start_y + btn_gap * 5);
   lv_obj_set_style_bg_color((lv_obj_t *)ui_Button_Reset_Settings,
                             lv_color_hex(0xFF3366), 0);
   lv_obj_add_event_cb((lv_obj_t *)ui_Button_Reset_Settings,
                       reset_settings_event_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *reset_lbl = lv_label_create((lv_obj_t *)ui_Button_Reset_Settings);
-  lv_label_set_text(reset_lbl, "RESET DEFAULTS");
+  lv_label_set_text(reset_lbl, "RESET");
   lv_obj_center(reset_lbl);
 
-  // Row 4
+  // Button 7 - Intro Sound
   ui_Button_Intro_Sound = lv_btn_create(ui_Screen6);
   lv_obj_set_size((lv_obj_t *)ui_Button_Intro_Sound, btn_w, btn_h);
-  lv_obj_align((lv_obj_t *)ui_Button_Intro_Sound, LV_ALIGN_TOP_LEFT, btn_x_left,
-               215);
+  lv_obj_align((lv_obj_t *)ui_Button_Intro_Sound, LV_ALIGN_TOP_LEFT, btn_x,
+               btn_start_y + btn_gap * 6);
   lv_obj_set_style_bg_color((lv_obj_t *)ui_Button_Intro_Sound,
                             lv_color_hex(0xFFCC00), 0);
   lv_obj_add_event_cb((lv_obj_t *)ui_Button_Intro_Sound, intro_sound_event_cb,
                       LV_EVENT_CLICKED, NULL);
   ui_Label_Intro_Sound = lv_label_create((lv_obj_t *)ui_Button_Intro_Sound);
-  lv_label_set_text(ui_Label_Intro_Sound, "Select startup audio");
+  lv_label_set_text(ui_Label_Intro_Sound, "Audio");
   lv_obj_set_style_text_color(ui_Label_Intro_Sound, lv_color_black(), 0);
   lv_obj_center(ui_Label_Intro_Sound);
 
+  // Button 8 - WiFi Settings
   ui_Button_Wifi = lv_btn_create(ui_Screen6);
   lv_obj_set_size((lv_obj_t *)ui_Button_Wifi, btn_w, btn_h);
-  lv_obj_align((lv_obj_t *)ui_Button_Wifi, LV_ALIGN_TOP_LEFT, btn_x_right, 215);
+  lv_obj_align((lv_obj_t *)ui_Button_Wifi, LV_ALIGN_TOP_LEFT, btn_x,
+               btn_start_y + btn_gap * 7);
   lv_obj_set_style_bg_color((lv_obj_t *)ui_Button_Wifi, lv_color_hex(0x00FF88),
                             0);
   lv_obj_add_event_cb((lv_obj_t *)ui_Button_Wifi, wifi_button_event_cb,
                       LV_EVENT_CLICKED, NULL);
   lv_obj_t *wifi_lbl = lv_label_create((lv_obj_t *)ui_Button_Wifi);
-  lv_label_set_text(wifi_lbl, LV_SYMBOL_WIFI " WIFI SETTINGS");
+  lv_label_set_text(wifi_lbl, LV_SYMBOL_WIFI " WiFi");
   lv_obj_set_style_text_color(wifi_lbl, lv_color_black(), 0);
   lv_obj_center(wifi_lbl);
 
-  lv_obj_t *gauge_label = lv_label_create(ui_Screen6);
-  lv_label_set_text(gauge_label, "Visible Gauges:");
-  lv_obj_set_style_text_color(gauge_label, lv_color_hex(0x00D4FF), 0);
-  lv_obj_align(gauge_label, LV_ALIGN_TOP_LEFT, 15, 270);
+  // Button 9 - Voice AI Toggle
+  ui_Button_Voice_AI = lv_btn_create(ui_Screen6);
+  lv_obj_set_size((lv_obj_t *)ui_Button_Voice_AI, btn_w, btn_h);
+  lv_obj_align((lv_obj_t *)ui_Button_Voice_AI, LV_ALIGN_TOP_LEFT, btn_x,
+               btn_start_y + btn_gap * 8);
+  lv_obj_add_event_cb((lv_obj_t *)ui_Button_Voice_AI, voice_ai_event_cb,
+                      LV_EVENT_CLICKED, NULL);
+  lv_obj_t *voice_lbl = lv_label_create((lv_obj_t *)ui_Button_Voice_AI);
+  lv_label_set_text(voice_lbl, "Voice AI: ON");
+  lv_obj_center(voice_lbl);
 
-  lv_obj_t *platform_label = lv_label_create(ui_Screen6);
-  lv_label_set_text(platform_label, "Vehicle Platform:");
-  lv_obj_set_style_text_color(platform_label, lv_color_hex(0x00FF88), 0);
-  lv_obj_align(platform_label, LV_ALIGN_TOP_RIGHT, -15, 270);
-
-  // Lists Section (y=300)
-  ui_Container_GaugeList = lv_obj_create(ui_Screen6);
-  lv_obj_set_size(ui_Container_GaugeList, 340, 450);
-  lv_obj_align(ui_Container_GaugeList, LV_ALIGN_TOP_LEFT, 15, 300);
-  lv_obj_set_scrollbar_mode(ui_Container_GaugeList, LV_SCROLLBAR_MODE_AUTO);
-  lv_obj_set_style_bg_color(ui_Container_GaugeList, lv_color_hex(0x1a1a1a), 0);
-  lv_obj_set_style_border_width(ui_Container_GaugeList, 1, 0);
-  lv_obj_set_style_border_color(ui_Container_GaugeList, lv_color_hex(0x333333),
+  // Single Box Container with border for Gauges and Platform (right of buttons)
+  lv_obj_t *ui_Container_Combined = lv_obj_create(ui_Screen6);
+  lv_obj_set_size(ui_Container_Combined, 520, 480);
+  lv_obj_align(ui_Container_Combined, LV_ALIGN_TOP_LEFT, 200, 45);
+  lv_obj_set_style_bg_color(ui_Container_Combined, lv_color_hex(0x1a1a1a), 0);
+  lv_obj_set_style_border_width(ui_Container_Combined, 1, 0);
+  lv_obj_set_style_border_color(ui_Container_Combined, lv_color_hex(0x00D4FF),
                                 0);
-  lv_obj_set_flex_flow(ui_Container_GaugeList, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_style_pad_all(ui_Container_GaugeList, 10, 0);
-  lv_obj_set_style_pad_gap(ui_Container_GaugeList, 10, 0);
+  lv_obj_set_style_radius(ui_Container_Combined, 6, 0);
+  lv_obj_set_style_pad_all(ui_Container_Combined, 5, 0);
+  lv_obj_set_style_pad_gap(ui_Container_Combined, 5, 0);
+  lv_obj_clear_flag(ui_Container_Combined, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_flex_flow(ui_Container_Combined, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(ui_Container_Combined, LV_FLEX_ALIGN_SPACE_EVENLY,
+                        LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
 
-  // Populate Gauge List (Same as before but moved to y=260)
+  // Left Column - Gauges (no border, transparent bg)
+  ui_Container_GaugeList = lv_obj_create(ui_Container_Combined);
+  lv_obj_set_size(ui_Container_GaugeList, 250, 465);
+  lv_obj_set_scrollbar_mode(ui_Container_GaugeList, LV_SCROLLBAR_MODE_AUTO);
+  lv_obj_set_style_bg_opa(ui_Container_GaugeList, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(ui_Container_GaugeList, 0, 0);
+  lv_obj_set_flex_flow(ui_Container_GaugeList, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_style_pad_all(ui_Container_GaugeList, 2, 0);
+  lv_obj_set_style_pad_gap(ui_Container_GaugeList, 4, 0);
+
+  // Gauge List Header
+  lv_obj_t *gauge_header = lv_label_create(ui_Container_GaugeList);
+  lv_label_set_text(gauge_header, "Visible Gauges");
+  lv_obj_set_style_text_color(gauge_header, lv_color_hex(0x00D4FF), 0);
+  lv_obj_set_style_text_font(gauge_header, &montserrat_20_en_ru, 0);
+
+  // Populate Gauge List
   const char *gauges[] = {
       "Screen 1:",  "MAP",        "Wastegate", "TPS",       "RPM",
       "Boost",      "TCU",        "Screen 2:", "Oil Press", "Oil Temp",
@@ -634,9 +677,8 @@ void ui_Screen6_screen_init(void) {
       lv_obj_t *header = lv_label_create(ui_Container_GaugeList);
       lv_label_set_text(header, gauges[i]);
       lv_obj_set_style_text_color(header, lv_color_hex(0x00FF88), 0);
-      lv_obj_set_style_text_font(header, &montserrat_20_en_ru,
-                                 0); // Cyrillic support
-      lv_obj_set_style_pad_top(header, 10, 0);
+      lv_obj_set_style_text_font(header, &montserrat_20_en_ru, 0);
+      lv_obj_set_style_pad_top(header, 6, 0);
     } else {
       lv_obj_t *cb = lv_checkbox_create(ui_Container_GaugeList);
       lv_checkbox_set_text(cb, gauges[i]);
@@ -646,17 +688,21 @@ void ui_Screen6_screen_init(void) {
     }
   }
 
-  ui_Container_PlatformList = lv_obj_create(ui_Screen6);
-  lv_obj_set_size(ui_Container_PlatformList, 340, 450);
-  lv_obj_align(ui_Container_PlatformList, LV_ALIGN_TOP_RIGHT, -15, 300);
+  // Right Column - Platform (no border, transparent bg)
+  ui_Container_PlatformList = lv_obj_create(ui_Container_Combined);
+  lv_obj_set_size(ui_Container_PlatformList, 250, 465);
   lv_obj_set_scrollbar_mode(ui_Container_PlatformList, LV_SCROLLBAR_MODE_AUTO);
-  lv_obj_set_style_bg_color(ui_Container_PlatformList, lv_color_hex(0x1a1a1a),
-                            0);
-  lv_obj_set_style_border_width(ui_Container_PlatformList, 1, 0);
-  lv_obj_set_style_border_color(ui_Container_PlatformList,
-                                lv_color_hex(0x333333), 0);
+  lv_obj_set_style_bg_opa(ui_Container_PlatformList, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(ui_Container_PlatformList, 0, 0);
   lv_obj_set_flex_flow(ui_Container_PlatformList, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_style_pad_all(ui_Container_PlatformList, 10, 0);
+  lv_obj_set_style_pad_all(ui_Container_PlatformList, 2, 0);
+  lv_obj_set_style_pad_gap(ui_Container_PlatformList, 4, 0);
+
+  // Platform List Header
+  lv_obj_t *platform_header = lv_label_create(ui_Container_PlatformList);
+  lv_label_set_text(platform_header, "Vehicle Platform");
+  lv_obj_set_style_text_color(platform_header, lv_color_hex(0x00FF88), 0);
+  lv_obj_set_style_text_font(platform_header, &montserrat_20_en_ru, 0);
 
   const char *platforms[] = {"VW PQ35/46", "VW PQ25", "VW MQB",
                              "BMW Exx",    "BMW E46", "BMW Fxx"};
@@ -669,55 +715,31 @@ void ui_Screen6_screen_init(void) {
                         NULL);
   }
 
-  // --- New WiFi Stats Panel ---
-  lv_obj_t *wifi_title_lbl = lv_label_create(ui_Screen6);
-  lv_label_set_text(wifi_title_lbl, "WiFi Status:");
-  lv_obj_set_style_text_color(wifi_title_lbl, lv_color_hex(0x00D4FF), 0);
-  lv_obj_align(wifi_title_lbl, LV_ALIGN_TOP_LEFT, 15, 770);
-
-  ui_Container_WiFiStats = lv_obj_create(ui_Screen6);
-  lv_obj_set_size(ui_Container_WiFiStats, 323, 428); // 5% smaller
-  lv_obj_align(ui_Container_WiFiStats, LV_ALIGN_TOP_LEFT, 15, 800);
-  lv_obj_set_style_bg_color(ui_Container_WiFiStats, lv_color_hex(0x1a1a1a), 0);
-  lv_obj_set_style_border_width(ui_Container_WiFiStats, 1, 0);
-  lv_obj_set_style_border_color(ui_Container_WiFiStats, lv_color_hex(0x00D4FF),
-                                0);
-  lv_obj_set_flex_flow(ui_Container_WiFiStats, LV_FLEX_FLOW_COLUMN);
-
-  ui_Label_WiFiInfo = lv_label_create(ui_Container_WiFiStats);
-  lv_label_set_text(ui_Label_WiFiInfo, "SSID: -\nIP: -\nRSSI: -\nSpeed: -");
-  lv_obj_set_style_text_color(ui_Label_WiFiInfo, lv_color_white(), 0);
-  lv_obj_set_style_text_font(ui_Label_WiFiInfo, &montserrat_20_en_ru,
-                             0); // Cyrillic support
-
-  // --- New AI Status Panel ---
+  // --- AI Status Panel (Full Width, WiFi Status removed) ---
   lv_obj_t *ai_title_lbl = lv_label_create(ui_Screen6);
   lv_label_set_text(ai_title_lbl, "AI Assistant Status:");
   lv_obj_set_style_text_color(ai_title_lbl, lv_color_hex(0x00FF88), 0);
-  lv_obj_align(ai_title_lbl, LV_ALIGN_TOP_RIGHT, -15, 770);
+  lv_obj_align(ai_title_lbl, LV_ALIGN_TOP_MID, 0, 820);
 
   ui_Container_AIStatus = lv_obj_create(ui_Screen6);
-  lv_obj_set_size(ui_Container_AIStatus, 323, 428); // 5% smaller
-  lv_obj_align(ui_Container_AIStatus, LV_ALIGN_TOP_RIGHT, -20, 800);
+  lv_obj_set_size(ui_Container_AIStatus, 700, 380);
+  lv_obj_align(ui_Container_AIStatus, LV_ALIGN_TOP_MID, 0, 850);
   lv_obj_set_style_bg_color(ui_Container_AIStatus, lv_color_hex(0x1a1a1a), 0);
   lv_obj_set_style_border_width(ui_Container_AIStatus, 1, 0);
   lv_obj_set_style_border_color(ui_Container_AIStatus, lv_color_hex(0x00FF88),
                                 0);
   lv_obj_set_flex_flow(ui_Container_AIStatus, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_scrollbar_mode(ui_Container_AIStatus, LV_SCROLLBAR_MODE_AUTO);
+  lv_obj_set_style_pad_all(ui_Container_AIStatus, 10, 0);
 
   ui_Label_AIInfo = lv_label_create(ui_Container_AIStatus);
   lv_label_set_text(ui_Label_AIInfo, "AI: Idle\nWaiting for trigger...");
   lv_obj_set_style_text_color(ui_Label_AIInfo, lv_color_white(), 0);
-  lv_obj_set_style_text_font(ui_Label_AIInfo, &montserrat_20_en_ru,
-                             0); // Cyrillic support
+  lv_obj_set_style_text_font(ui_Label_AIInfo, &montserrat_20_en_ru, 0);
   lv_label_set_long_mode(ui_Label_AIInfo, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(ui_Label_AIInfo,
-                   lv_pct(95)); // Slightly less than 100% for padding
-  lv_obj_set_height(ui_Label_AIInfo,
-                    LV_SIZE_CONTENT); // Auto height based on content
-  lv_obj_set_flex_grow(ui_Label_AIInfo,
-                       1); // Allow label to grow in flex container
+  lv_obj_set_width(ui_Label_AIInfo, lv_pct(95));
+  lv_obj_set_height(ui_Label_AIInfo, LV_SIZE_CONTENT);
+  lv_obj_set_flex_grow(ui_Label_AIInfo, 1);
 
   // Load saved settings and update button states
   ui_Screen6_load_settings();
@@ -725,38 +747,9 @@ void ui_Screen6_screen_init(void) {
 
   // Add navigation buttons if enabled in settings
   ui_create_standard_navigation_buttons(ui_Screen6);
-
-  // Start WiFi status update timer (every 2 seconds)
-  wifi_status_timer =
-      lv_timer_create(ui_Screen6_update_wifi_status, 2000, NULL);
-  ui_Screen6_update_wifi_status(NULL); // Initial update
 }
 
-// Update WiFi status dynamically
-void ui_Screen6_update_wifi_status(lv_timer_t *timer) {
-  if (!ui_Label_WiFiInfo)
-    return;
-
-  wifi_controller_info_t info;
-  wifi_controller_get_info(&info);
-
-  char status_text[128];
-  if (info.ssid[0] != '\0' && info.ip[0] != '\0') {
-    snprintf(status_text, sizeof(status_text),
-             "SSID: %s\nIP: %s\nRSSI: %d dBm\nSpeed: %d Mbps", info.ssid,
-             info.ip, info.rssi, info.speed);
-    lv_obj_set_style_text_color(ui_Label_WiFiInfo, lv_color_hex(0x00FF88), 0);
-  } else if (info.ssid[0] != '\0') {
-    snprintf(status_text, sizeof(status_text),
-             "SSID: %s\nConnecting...\nRSSI: -\nSpeed: -", info.ssid);
-    lv_obj_set_style_text_color(ui_Label_WiFiInfo, lv_color_hex(0xFFAA00), 0);
-  } else {
-    snprintf(status_text, sizeof(status_text),
-             "SSID: Not Connected\nIP: -\nRSSI: -\nSpeed: -");
-    lv_obj_set_style_text_color(ui_Label_WiFiInfo, lv_color_hex(0xFF6666), 0);
-  }
-  lv_label_set_text(ui_Label_WiFiInfo, status_text);
-}
+// WiFi status update function removed - WiFi status box no longer on Screen6
 
 // Update AI status text
 void ui_Screen6_set_ai_info(const char *text) {
@@ -767,10 +760,6 @@ void ui_Screen6_set_ai_info(const char *text) {
 
 // Destroy Screen6
 void ui_Screen6_screen_destroy(void) {
-  if (wifi_status_timer) {
-    lv_timer_del(wifi_status_timer);
-    wifi_status_timer = NULL;
-  }
   if (ui_Screen6) {
     lv_obj_del(ui_Screen6);
     ui_Screen6 = NULL;
@@ -1046,6 +1035,21 @@ void ui_Screen6_update_button_states(void) {
         else
           lv_obj_clear_state(child, LV_STATE_CHECKED);
       }
+    }
+  }
+
+  // Update Voice AI button
+  btn = (lv_obj_t *)ui_Button_Voice_AI;
+  if (btn) {
+    label = lv_obj_get_child(btn, 0);
+    if (voice_ai_active) {
+      lv_obj_set_style_bg_color(btn, lv_color_hex(0x00FF88), 0);
+      if (label)
+        lv_label_set_text(label, "Voice AI: ON");
+    } else {
+      lv_obj_set_style_bg_color(btn, lv_color_hex(0xFF3366), 0);
+      if (label)
+        lv_label_set_text(label, "Voice AI: OFF");
     }
   }
 }

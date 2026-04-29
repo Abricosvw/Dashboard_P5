@@ -12,3 +12,4 @@ dependencies:
   # waveshare/esp_lcd_ili9881c is local in components/
   waveshare/esp32_p4_nano: ~1.2.0
   espressif/es8311: '*'
+  espressif/esp-sr: "^1.0.0"

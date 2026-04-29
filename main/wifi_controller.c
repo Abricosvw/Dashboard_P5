@@ -13,11 +13,12 @@
 #include <sys/param.h>
 
 #if !CONFIG_IDF_TARGET_ESP32P4 || CONFIG_ESP_WIFI_REMOTE_ENABLED ||            \
-    CONFIG_ESP_HOST_WIFI_ENABLED
+    CONFIG_ESP_HOSTED_ENABLED
 #include "esp_netif.h"
 #endif
 #include "cJSON.h"
 #include "web_server.h"
+#include "wifi_storage.h"
 
 static const char *TAG = "WIFI_CONTROLLER";
 
@@ -40,11 +41,11 @@ extern const uint8_t joystick_html_start[] asm("_binary_joystick_html_start");
 extern const uint8_t joystick_html_end[] asm("_binary_joystick_html_end");
 
 #if !CONFIG_IDF_TARGET_ESP32P4 || CONFIG_ESP_WIFI_REMOTE_ENABLED ||            \
-    CONFIG_ESP_HOST_WIFI_ENABLED
+    CONFIG_ESP_HOSTED_ENABLED
 #endif
 
 #if !CONFIG_IDF_TARGET_ESP32P4 || CONFIG_ESP_WIFI_REMOTE_ENABLED ||            \
-    CONFIG_ESP_HOST_WIFI_ENABLED
+    CONFIG_ESP_HOSTED_ENABLED
 #endif
 
 void wifi_controller_init(void) {
@@ -60,37 +61,12 @@ void wifi_controller_init(void) {
   ESP_ERROR_CHECK(ret);
 
 #if !CONFIG_IDF_TARGET_ESP32P4 || CONFIG_ESP_WIFI_REMOTE_ENABLED ||            \
-    CONFIG_ESP_HOST_WIFI_ENABLED
+    CONFIG_ESP_HOSTED_ENABLED
 
-  // Read saved WiFi credentials from NVS
-  nvs_handle_t nvs_handle;
-  char sta_ssid[33] = {0};
-  char sta_password[64] = {0};
-  size_t ssid_len = sizeof(sta_ssid);
-  size_t pass_len = sizeof(sta_password);
+  wifi_storage_init();
 
-  if (nvs_open("wifi_creds", NVS_READONLY, &nvs_handle) == ESP_OK) {
-    nvs_get_str(nvs_handle, "ssid", sta_ssid, &ssid_len);
-    nvs_get_str(nvs_handle, "password", sta_password, &pass_len);
-    nvs_close(nvs_handle);
-    ESP_LOGI(TAG, "Found saved WiFi credentials: %s", sta_ssid);
-  } else {
-    ESP_LOGI(TAG, "No saved WiFi credentials, AP mode only");
-  }
-
-  // Initialize WiFi in AP+STA mode (both simultaneously)
-  if (sta_ssid[0] != '\0') {
-    // We have saved STA credentials - use AP+STA mode
-    wifi_init_apsta("ESP32P4_Dashboard", "", sta_ssid, sta_password);
-    ESP_LOGI(TAG, "WiFi AP+STA mode started!");
-    ESP_LOGI(TAG, "  AP: ESP32P4_Dashboard (192.168.4.1)");
-    ESP_LOGI(TAG, "  STA: Connecting to %s...", sta_ssid);
-  } else {
-    // No saved credentials - start AP only
-    wifi_init_ap("ESP32P4_Dashboard", "");
-    ESP_LOGI(TAG, "WiFi AP mode started (no saved STA credentials)");
-    ESP_LOGI(TAG, "  AP: ESP32P4_Dashboard (192.168.4.1)");
-  }
+  // Try to find the best known network
+  wifi_controller_connect_saved();
 
   web_server_start();
 #else
@@ -103,28 +79,70 @@ void wifi_controller_init(void) {
  * @brief Connect to saved WiFi AP from NVS
  */
 esp_err_t wifi_controller_connect_saved(void) {
-  nvs_handle_t nvs_handle;
-  char ssid[33] = {0};
-  char password[64] = {0};
-  size_t ssid_len = sizeof(ssid);
-  size_t pass_len = sizeof(password);
+  ESP_LOGI(TAG, "Scanning for known networks...");
 
-  if (nvs_open("wifi_creds", NVS_READONLY, &nvs_handle) != ESP_OK) {
-    ESP_LOGI(TAG, "No saved WiFi credentials found in NVS");
-    return ESP_ERR_NOT_FOUND;
+  wifi_cred_t *known = malloc(sizeof(wifi_cred_t) * MAX_KNOWN_NETWORKS);
+  if (!known) {
+    ESP_LOGE(TAG, "Failed to allocate memory for known networks");
+    return ESP_ERR_NO_MEM;
   }
 
-  esp_err_t res_s = nvs_get_str(nvs_handle, "ssid", ssid, &ssid_len);
-  esp_err_t res_p = nvs_get_str(nvs_handle, "password", password, &pass_len);
-  (void)res_p; // Suppress unused warning
-  nvs_close(nvs_handle);
+  int known_count = 0;
+  wifi_storage_get_all(known, &known_count);
 
-  if (res_s == ESP_OK && ssid[0] != '\0') {
-    ESP_LOGI(TAG, "Found saved WiFi: %s. Attempting auto-connect...", ssid);
-    return wifi_controller_connect_to_ap(ssid, password);
+  if (known_count == 0) {
+    ESP_LOGI(TAG, "No known networks in memory. Starting AP mode.");
+    free(known);
+    return wifi_init_ap("ESP32P4_Dashboard", "");
   }
 
-  return ESP_ERR_NOT_FOUND;
+  // Scan current air
+  uint16_t ap_max = 20;
+  wifi_ap_record_t *ap_info = malloc(sizeof(wifi_ap_record_t) * ap_max);
+  if (!ap_info) {
+    ESP_LOGE(TAG, "Failed to allocate memory for scan results");
+    free(known);
+    return ESP_ERR_NO_MEM;
+  }
+
+  uint16_t ap_count = ap_max;
+  if (wifi_scan(ap_info, &ap_count) != ESP_OK) {
+    ESP_LOGE(TAG, "WiFi Scan failed during auto-connect");
+    free(known);
+    free(ap_info);
+    return ESP_FAIL;
+  }
+
+  // Find best match
+  int best_rssi = -1000;
+  int best_known_idx = -1;
+
+  for (int i = 0; i < ap_count; i++) {
+    for (int j = 0; j < known_count; j++) {
+      if (strcmp((char *)ap_info[i].ssid, known[j].ssid) == 0) {
+        if (ap_info[i].rssi > best_rssi) {
+          best_rssi = ap_info[i].rssi;
+          best_known_idx = j;
+        }
+      }
+    }
+  }
+
+  esp_err_t ret = ESP_OK;
+  if (best_known_idx != -1) {
+    ESP_LOGI(TAG, "Best known network found: %s (RSSI: %d). Connecting...",
+             known[best_known_idx].ssid, best_rssi);
+    ret = wifi_init_apsta("ESP32P4_Dashboard", "", known[best_known_idx].ssid,
+                          known[best_known_idx].password);
+  } else {
+    ESP_LOGI(TAG, "None of the %d known networks are in range. AP mode only.",
+             known_count);
+    ret = wifi_init_ap("ESP32P4_Dashboard", "");
+  }
+
+  free(known);
+  free(ap_info);
+  return ret;
 }
 
 static int compare_rssi(const void *a, const void *b) {
@@ -133,7 +151,7 @@ static int compare_rssi(const void *a, const void *b) {
 
 int wifi_controller_scan(wifi_scan_result_t *results, int max_results) {
 #if !CONFIG_IDF_TARGET_ESP32P4 || CONFIG_ESP_WIFI_REMOTE_ENABLED ||            \
-    CONFIG_ESP_HOST_WIFI_ENABLED
+    CONFIG_ESP_HOSTED_ENABLED
   is_wifi_scanning = true; // Set flag before scanning
 
   wifi_ap_record_t *ap_info = malloc(sizeof(wifi_ap_record_t) * max_results);
@@ -167,10 +185,11 @@ int wifi_controller_scan(wifi_scan_result_t *results, int max_results) {
     char hex[65] = {0};
     for (int j = 0; j < 32; j++)
       sprintf(hex + j * 2, "%02X", ap_info[i].ssid[j]);
-    ESP_LOGI(TAG, "Sorted Result [%d]: SSID='%s', RSSI=%d", i, results[i].ssid,
-             results[i].rssi);
+    ESP_LOGI(TAG, "Sorted Result [%d]: SSID='%s', RSSI=%d, Auth=%d", i,
+             results[i].ssid, results[i].rssi, results[i].authmode);
   }
 
+  ESP_LOGI(TAG, "WiFi scan processing finished, freeing ap_info");
   free(ap_info);
   is_wifi_scanning = false; // Clear flag after scanning
   return count;
@@ -182,7 +201,8 @@ int wifi_controller_scan(wifi_scan_result_t *results, int max_results) {
 esp_err_t wifi_controller_connect_to_ap(const char *ssid,
                                         const char *password) {
 #if !CONFIG_IDF_TARGET_ESP32P4 || CONFIG_ESP_WIFI_REMOTE_ENABLED ||            \
-    CONFIG_ESP_HOST_WIFI_ENABLED
+    CONFIG_ESP_HOSTED_ENABLED
+  wifi_storage_save(ssid, password);
   return wifi_init_sta(ssid, password);
 #else
   return ESP_ERR_NOT_SUPPORTED;
@@ -209,7 +229,7 @@ void wifi_controller_get_info(wifi_controller_info_t *info) {
   memset(info, 0, sizeof(wifi_controller_info_t));
 
 #if !CONFIG_IDF_TARGET_ESP32P4 || CONFIG_ESP_WIFI_REMOTE_ENABLED ||            \
-    CONFIG_ESP_HOST_WIFI_ENABLED
+    CONFIG_ESP_HOSTED_ENABLED
   // Skip AP info query during scanning to prevent crash in esp_hosted
   if (is_wifi_scanning) {
     ESP_LOGD(TAG, "Skipping AP info query during WiFi scan");
@@ -220,10 +240,13 @@ void wifi_controller_get_info(wifi_controller_info_t *info) {
       strncpy(info->ssid, (char *)ap_info.ssid, 32);
       info->rssi = ap_info.rssi;
       info->speed = 54; // Assume base 802.11g for now
-      ESP_LOGI(TAG, "WiFi Info: SSID=%s, RSSI=%d", info->ssid, info->rssi);
-    } else if (ret != ESP_ERR_WIFI_NOT_CONNECT) {
-      ESP_LOGW(TAG, "esp_wifi_sta_get_ap_info failed: %s",
-               esp_err_to_name(ret));
+      ESP_LOGI(TAG, "WiFi Info: SSID=%s, RSSI=%d, Speed=%d", info->ssid,
+               info->rssi, info->speed);
+    } else if (ret == ESP_ERR_WIFI_NOT_CONNECT) {
+      ESP_LOGD(TAG, "esp_wifi_sta_get_ap_info: Not connected");
+    } else {
+      ESP_LOGW(TAG, "esp_wifi_sta_get_ap_info failed: %s (0x%x)",
+               esp_err_to_name(ret), ret);
     }
   }
 

@@ -11,6 +11,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "main_gui.h"
+#include "nvs_flash.h"
 #include "sd_card_manager.h"
 #include "settings_manager.h"
 #include "ui/settings_config.h"
@@ -19,52 +20,6 @@
 #include <dirent.h>
 
 static const char *TAG = "MAIN";
-
-// System monitoring task
-static void system_monitor_task(void *pvParameters) {
-  ESP_LOGI(TAG, "System monitor started");
-
-  esp_chip_info_t chip_info;
-  esp_chip_info(&chip_info);
-
-  while (1) {
-    // Heap statistics
-    size_t free_heap = esp_get_free_heap_size();
-    size_t min_free_heap = esp_get_minimum_free_heap_size();
-    size_t free_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
-    size_t free_psram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
-
-    ESP_LOGI("SYS_MON", "======== System Resources ========");
-    ESP_LOGI("SYS_MON", "Chip: ESP32-P4 (Cores: %d, Rev: v%d.%d)",
-             chip_info.cores, chip_info.revision / 100,
-             chip_info.revision % 100);
-    ESP_LOGI("SYS_MON", "Heap: Free=%u KB, Min=%u KB", free_heap / 1024,
-             min_free_heap / 1024);
-    ESP_LOGI("SYS_MON", "Internal RAM: Free=%u KB", free_internal / 1024);
-    ESP_LOGI("SYS_MON", "PSRAM: Free=%u KB (%.1f MB)", free_psram / 1024,
-             (float)free_psram / (1024 * 1024));
-
-#if CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS
-    // CPU/Task statistics
-    char *task_list = malloc(4096);
-    if (task_list) {
-      vTaskGetRunTimeStats(task_list);
-      ESP_LOGI("SYS_MON",
-               "--- Task CPU Usage ---\nTask Name\tAbs Time\tTime %%\n%s",
-               task_list);
-      free(task_list);
-    }
-#else
-    ESP_LOGW("SYS_MON", "CPU Load Stats DISABLED in sdkconfig!");
-#endif
-
-    // Task count
-    ESP_LOGI("SYS_MON", "Running tasks: %d", uxTaskGetNumberOfTasks());
-    ESP_LOGI("SYS_MON", "==================================");
-
-    vTaskDelay(pdMS_TO_TICKS(5000)); // Every 5 seconds
-  }
-}
 
 // WIFI Credentials
 #define WIFI_SSID "ESP32P4_Dashboard"
@@ -90,6 +45,19 @@ static void list_sd_files(const char *path) {
 
 void app_main(void) {
   ESP_LOGI(TAG, "=== Dashboard_P4 Starting ===");
+
+  // Initialize NVS first (needed for WiFi and other settings)
+  esp_err_t ret = nvs_flash_init();
+  if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
+      ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    ESP_ERROR_CHECK(nvs_flash_erase());
+    ret = nvs_flash_init();
+  }
+  ESP_ERROR_CHECK(ret);
+
+  ESP_LOGI(TAG, "Initial Heap: Internal [%d] bytes, SPIRAM [%d] bytes",
+           heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+           heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
 
   ESP_LOGI(TAG, "[1] Power initialization...");
   board_init_power();
@@ -162,7 +130,6 @@ void app_main(void) {
   if (audio_init() == ESP_OK) {
     ESP_LOGI(TAG, "Setting volume to 50%%...");
     audio_set_volume(50);
-    // audio_play_tone(1000, 1000); // Removed diagnostic beep
     vTaskDelay(pdMS_TO_TICKS(100));
 
     ESP_LOGI(TAG, "Playing startup sound from SD card (%s)...",
@@ -187,10 +154,6 @@ void app_main(void) {
   // can_init();
 
   ESP_LOGI(TAG, "=== System Ready! ===");
-
-  // Start system monitoring task
-  xTaskCreatePinnedToCore(system_monitor_task, "sys_mon", 4096, NULL, 5, NULL,
-                          0);
 
   // Main loop
   while (1) {

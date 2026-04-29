@@ -16,5 +16,6 @@
     "--query-driver=**",
     "--compile-commands-dir=c:\\Users\\11218\\Dashboard_P5\\build"
   ],
-  "idf.flashType": "UART"
+  "idf.flashType": "UART",
+  "idf.currentSetup": "C:/esp-idf-v5.3.3/frameworks/esp-idf-v5.3.3/"
 }

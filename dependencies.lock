@@ -29,6 +29,30 @@ dependencies:
       registry_url: https://components.espressif.com
       type: service
     version: 1.1.4
+  espressif/esp-dsp:
+    component_hash: 3e7bbd487f1357a1d4944d0c85966d049501ea281b8a4c7f93f7cfedd5b7f23d
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=4.2'
+    source:
+      registry_url: https://components.espressif.com
+      type: service
+    version: 1.4.12
+  espressif/esp-sr:
+    component_hash: 9b41fd5ae5960c393bfd3559cd6e5fa2a95c0bf833915cebafe57fb8c4e4c396
+    dependencies:
+    - name: espressif/esp-dsp
+      registry_url: https://components.espressif.com
+      require: private
+      version: <=1.5.0
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.9.5
   espressif/esp_codec_dev:
     component_hash: 014948481bda426cd46714f297fe1891711246c62bea288863a8cc8cf13ef1f0
     dependencies:
@@ -292,6 +316,7 @@ dependencies:
     version: 1.0.6
 direct_dependencies:
 - espressif/es8311
+- espressif/esp-sr
 - espressif/esp_hosted
 - espressif/esp_lcd_touch
 - espressif/esp_lvgl_port
@@ -300,6 +325,6 @@ direct_dependencies:
 - idf
 - lvgl/lvgl
 - waveshare/esp32_p4_nano
-manifest_hash: 7172ef87055ab2582b53ec297df5f095cb64e9237f70627cb3d413ab3b7086b8
+manifest_hash: 6e6f8dd05ef73f46afba61a7cea63d8d3676bff7864ab9c5de53ccd9a6214e4a
 target: esp32p4
 version: 2.0.0

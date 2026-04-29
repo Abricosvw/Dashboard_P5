@@ -139,8 +139,8 @@ static esp_err_t audio_codec_config(uint32_t sample_rate) {
                       "Sys 13 failed"); // Enable output to HP drive
 
   // 5. Microphone Configuration (from esp_codec_dev)
-  ESP_RETURN_ON_ERROR(es8311_write_reg(0x14, 0x1A), TAG,
-                      "Sys 14 failed"); // Analog MIC + max PGA gain
+  ESP_RETURN_ON_ERROR(es8311_write_reg(0x14, 0x3A), TAG,
+                      "Sys 14 failed"); // Analog MIC + MAX PGA gain (42dB)
   ESP_RETURN_ON_ERROR(es8311_write_reg(0x15, 0x40), TAG,
                       "ADC 15 failed"); // ADC ramp rate (from es8311_start)
   ESP_RETURN_ON_ERROR(es8311_write_reg(0x1B, 0x0A), TAG,
@@ -149,8 +149,8 @@ static esp_err_t audio_codec_config(uint32_t sample_rate) {
                       "ADC 1C failed"); // Bypass EQ + cancel DC offset
 
   // Register 0x17: ADC volume = 0xBF (from es8311_start, NOT 0xC8!)
-  ESP_RETURN_ON_ERROR(es8311_write_reg(0x17, 0xBF), TAG,
-                      "ADC Vol failed"); // ADC gain 0xBF
+  ESP_RETURN_ON_ERROR(es8311_write_reg(0x17, 0xDF), TAG,
+                      "ADC Vol failed"); // ADC gain 0xDF (+20dB approx)
 
   // Internal reference signal (from es8311_open)
   ESP_RETURN_ON_ERROR(es8311_write_reg(0x44, 0x50), TAG,
@@ -198,6 +198,10 @@ static esp_err_t audio_codec_init(void) {
     ESP_LOGE(TAG, "I2C Bus not initialized");
     return ESP_FAIL;
   }
+
+  ESP_LOGI(TAG, "Heap Summary: Internal [%d] bytes, SPIRAM [%d] bytes free",
+           heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+           heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
 
   i2c_device_config_t dev_cfg = {
       .dev_addr_length = I2C_ADDR_BIT_LEN_7,
@@ -284,18 +288,32 @@ esp_err_t audio_set_sample_rate_internal(uint32_t rate) {
   ESP_LOGI(TAG, "Switching Sample Rate: %" PRIu32 " Hz -> %" PRIu32 " Hz",
            current_sample_rate, rate);
 
-  // 1. Disable I2S
-  i2s_channel_disable(tx_handle);
+  // 1. Disable I2S Channels (Clocks must be off to reconfigure)
+  if (tx_handle)
+    i2s_channel_disable(tx_handle);
+  if (rx_handle)
+    i2s_channel_disable(rx_handle);
 
-  // 2. Reconfigure I2S Clock
+  // 2. Reconfigure I2S Clock for BOTH channels
   i2s_std_clk_config_t clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(rate);
   clk_cfg.mclk_multiple = I2S_MCLK_MULTIPLE_256;
-  ESP_RETURN_ON_ERROR(i2s_channel_reconfig_std_clock(tx_handle, &clk_cfg), TAG,
-                      "I2S reconfig failed");
+
+  if (tx_handle) {
+    ESP_RETURN_ON_ERROR(i2s_channel_reconfig_std_clock(tx_handle, &clk_cfg),
+                        TAG, "I2S TX reconfig failed");
+  }
+  if (rx_handle) {
+    ESP_RETURN_ON_ERROR(i2s_channel_reconfig_std_clock(rx_handle, &clk_cfg),
+                        TAG, "I2S RX reconfig failed");
+  }
 
   // 3. Enable I2S (Clocks must be active for codec to sync during config)
-  i2s_channel_enable(tx_handle);
-  vTaskDelay(pdMS_TO_TICKS(10));
+  if (tx_handle)
+    i2s_channel_enable(tx_handle);
+  if (rx_handle)
+    i2s_channel_enable(rx_handle);
+
+  vTaskDelay(pdMS_TO_TICKS(20));
 
   // 4. Reconfigure Codec
   audio_codec_config(rate);
@@ -344,7 +362,8 @@ static void audio_player_task(void *pvParameters) {
 
     ESP_LOGI(TAG, "Background playback started: %s", s_current_wav_path);
 
-    FILE *f = fopen(s_current_wav_path, "rb");
+    FILE *f = NULL;
+    f = fopen(s_current_wav_path, "rb");
     if (!f) {
       ESP_LOGE(TAG, "Failed to open WAV");
       goto finish;
@@ -352,7 +371,6 @@ static void audio_player_task(void *pvParameters) {
 
     wav_header_t header;
     if (fread(&header, 1, sizeof(wav_header_t), f) != sizeof(wav_header_t)) {
-      fclose(f);
       goto finish;
     }
 
@@ -373,14 +391,12 @@ static void audio_player_task(void *pvParameters) {
       fseek(f, chunk_sz, SEEK_CUR);
     }
     if (!found) {
-      fclose(f);
       goto finish;
     }
 
     const size_t buf_sz = 2048;
     int16_t *buf = malloc(buf_sz);
     if (!buf) {
-      fclose(f);
       goto finish;
     }
 
@@ -405,10 +421,17 @@ static void audio_player_task(void *pvParameters) {
     }
 
     free(buf);
-    fclose(f);
 
   finish:
     audio_codec_set_mute(true); // Always mute at end or stop
+    if (f) {
+      fclose(f);
+      f = NULL;
+    }
+
+    // CRITICAL: Always return to 16kHz after playback so WWD/AI works
+    audio_set_sample_rate_internal(AUDIO_SAMPLE_RATE);
+
     xEventGroupSetBits(s_audio_event_group, AUDIO_EVENT_IDLE);
     ESP_LOGI(TAG, "Background playback idle");
   }
@@ -464,7 +487,7 @@ esp_err_t audio_play_wav(const char *path) {
   }
 
   if (!s_audio_task_handle) {
-    xTaskCreatePinnedToCore(audio_player_task, "audio_player", 4096, NULL, 5,
+    xTaskCreatePinnedToCore(audio_player_task, "audio_player", 12288, NULL, 5,
                             &s_audio_task_handle, 0);
   }
 
@@ -533,11 +556,11 @@ esp_err_t audio_record_wav(const char *path, uint32_t duration_ms) {
 
   // Ensure Codec ADC is ready (from esp_codec_dev)
   es8311_write_reg(0x0E, 0x02);  // Enable analog PGA, enable ADC
-  es8311_write_reg(0x14, 0x1A);  // Analog MIC + max PGA gain
+  es8311_write_reg(0x14, 0x3A);  // Analog MIC + max PGA gain
   es8311_write_reg(0x15, 0x40);  // ADC ramp rate
   es8311_write_reg(0x1B, 0x0A);  // ADC HPF settings (CRITICAL!)
   es8311_write_reg(0x1C, 0x6A);  // Bypass EQ + cancel DC offset
-  es8311_write_reg(0x17, 0xBF);  // ADC volume 0xBF (from esp_codec_dev)
+  es8311_write_reg(0x17, 0xDF);  // ADC volume boosted
   vTaskDelay(pdMS_TO_TICKS(50)); // Allow ADC to stabilize
 
   // CRITICAL: I2S RX reads STEREO data (L+R samples interleaved)
@@ -615,3 +638,5 @@ esp_err_t audio_record_wav(const char *path, uint32_t duration_ms) {
   ESP_LOGI(TAG, "Recording complete. Size: %u bytes", total_bytes);
   return ESP_OK;
 }
+
+i2s_chan_handle_t audio_get_rx_handle(void) { return rx_handle; }
