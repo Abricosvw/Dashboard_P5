@@ -260,16 +260,6 @@ void update_all_gauges(void) {
   }
 
   // --- Screen 6 WiFi & AI Updates ---
-  if (ui_Label_WiFiInfo && lv_obj_is_visible(ui_Screen6)) {
-    wifi_controller_info_t w_info;
-    wifi_controller_get_info(&w_info);
-    char buf[128];
-    snprintf(buf, sizeof(buf), "SSID: %s\nIP: %s\nRSSI: %d dBm\nSpeed: %d Mbps",
-             w_info.ssid[0] ? w_info.ssid : "Disconnected",
-             w_info.ip[0] ? w_info.ip : "0.0.0.0", w_info.rssi, w_info.speed);
-    lv_label_set_text(ui_Label_WiFiInfo, buf);
-  }
-
   if (ui_Label_AIInfo && lv_obj_is_visible(ui_Screen6)) {
     // AI status could be fetched from ai_manager if it exposed a state
     // For now, we update it via events or keep it simple

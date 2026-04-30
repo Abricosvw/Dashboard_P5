@@ -53,6 +53,8 @@ static const char *SYSTEM_PROMPT =
     "Доступные экраны: 1-Главный (MAP,RPM,Boost), 2-Датчики (масло,вода), "
     "3-CAN терминал, "
     "4-Дополнительные датчики, 5-Крутящий момент, 6-Настройки. "
+    "Ты также можешь писать скрипты на Lua (ESP-Claw Terminal) "
+    "для управления поведением машины, если пользователь просит создать правило. "
     "Когда пользователь просит выполнить действие, используй соответствующую "
     "функцию.";
 
@@ -126,6 +128,17 @@ static const char *FUNCTION_DECLARATIONS =
     "  \"name\": \"save_settings\","
     "  \"description\": \"Сохранить текущие настройки на SD карту\","
     "  \"parameters\": {\"type\": \"object\", \"properties\": {}}"
+    "},{"
+    "  \"name\": \"generate_lua_rule\","
+    "  \"description\": \"Сгенерировать Lua скрипт для ESP-Claw терминала\","
+    "  \"parameters\": {"
+    "    \"type\": \"object\","
+    "    \"properties\": {"
+    "      \"lua_code\": {\"type\": \"string\", \"description\": \"Готовый код "
+    "на языке Lua\"}"
+    "    },"
+    "    \"required\": [\"lua_code\"]"
+    "  }"
     "}]";
 
 static void update_ui_status(const char *text) {
@@ -455,22 +468,36 @@ static void handle_gemini_response(const char *json_str) {
 
           char *args_str = fn_args ? cJSON_PrintUnformatted(fn_args) : NULL;
 
-          // Execute the function
-          ai_cmd_result_t result =
-              ai_execute_function_call(fn_name->valuestring, args_str);
+          // Special case for generating Lua code
+          if (strcmp(fn_name->valuestring, "generate_lua_rule") == 0 && fn_args) {
+            cJSON *lua_code = cJSON_GetObjectItem(fn_args, "lua_code");
+            if (lua_code && cJSON_IsString(lua_code)) {
+                extern void ui_Screen6_set_lua_terminal_text(const char *text);
+                if (example_lvgl_lock(500)) {
+                    ui_Screen6_set_lua_terminal_text(lua_code->valuestring);
+                    example_lvgl_unlock();
+                }
+                update_ui_status("✅ Код сгенерирован и добавлен в Терминал");
+                speak_response("Код сгенерирован в терминале");
+            }
+          } else {
+              // Execute the normal UI function
+              ai_cmd_result_t result =
+                  ai_execute_function_call(fn_name->valuestring, args_str);
+
+              // Show result to user
+              char status_buf[512];
+              snprintf(status_buf, sizeof(status_buf), "%s\n\n%s",
+                       result.success ? "✅ Команда выполнена:" : "❌ Ошибка:",
+                       result.message);
+              update_ui_status(status_buf);
+
+              // Speak the result
+              speak_response(result.message);
+          }
 
           if (args_str)
             free(args_str);
-
-          // Show result to user
-          char status_buf[512];
-          snprintf(status_buf, sizeof(status_buf), "%s\n\n%s",
-                   result.success ? "✅ Команда выполнена:" : "❌ Ошибка:",
-                   result.message);
-          update_ui_status(status_buf);
-
-          // Speak the result
-          speak_response(result.message);
 
           cJSON_Delete(root);
           return;

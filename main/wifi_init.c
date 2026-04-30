@@ -292,16 +292,20 @@ esp_err_t wifi_scan(wifi_ap_record_t *ap_info, uint16_t *number) {
   // Get current mode and preserve it (don't switch to STA which breaks APSTA)
   wifi_mode_t current_mode;
   esp_err_t err = esp_wifi_get_mode(&current_mode);
-  if (err != ESP_OK) {
-    // WiFi not started yet, set to STA for scanning
+  if (err != ESP_OK || current_mode == WIFI_MODE_NULL) {
+    // WiFi not configured yet, set to STA for scanning
     err = esp_wifi_set_mode(WIFI_MODE_STA);
     if (err != ESP_OK)
       return err;
-    err = esp_wifi_start();
-    if (err != ESP_OK)
-      return err;
   }
-  // If already in APSTA or STA mode, scanning will work without mode change
+  
+  // Ensure WiFi is actually started (esp_wifi_start returns ESP_ERR_WIFI_STATE if already running)
+  err = esp_wifi_start();
+  if (err != ESP_OK && err != ESP_ERR_WIFI_STATE) {
+    ESP_LOGE(TAG, "Failed to start WiFi for scan: %s", esp_err_to_name(err));
+    return err;
+  }
+
 
   wifi_scan_config_t scan_config = {
       .ssid = NULL,

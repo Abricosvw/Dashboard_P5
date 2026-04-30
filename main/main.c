@@ -16,6 +16,7 @@
 #include "settings_manager.h"
 #include "ui/settings_config.h"
 #include "wifi_controller.h"
+#include "lua_manager.h"
 #include "wifi_init.h"
 #include <dirent.h>
 
@@ -152,6 +153,9 @@ void app_main(void) {
   // =========================================================================
   ESP_LOGI(TAG, "[7] CAN Bus init - DISABLED FOR DEBUGGING...");
   // can_init();
+
+  ESP_LOGI(TAG, "[8] Lua Engine init...");
+  lua_manager_init();
 
   ESP_LOGI(TAG, "=== System Ready! ===");
 

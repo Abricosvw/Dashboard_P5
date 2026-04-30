@@ -25,14 +25,15 @@ extern void *ui_Button_Enable_Screen3;
 extern void *ui_Button_Save_Settings;
 extern void *ui_Button_Reset_Settings;
 
-// New WiFi and AI Status Objects
-extern lv_obj_t *ui_Container_WiFiStats;
-extern lv_obj_t *ui_Container_AIStatus;
-extern lv_obj_t *ui_Label_WiFiInfo;
+// New ESP-Claw Terminal and AI Status Objects
 extern lv_obj_t *ui_Label_AIInfo;
+extern lv_obj_t *ui_TextArea_Lua;
+extern lv_obj_t *ui_Button_Run_Rule;
+extern lv_obj_t *ui_Button_Save_Rule;
 
 // Functions for device parameters settings
 extern void ui_update_device_settings_display(void);
+extern void ui_Screen6_set_lua_terminal_text(const char *text);
 extern void ui_save_device_settings(void);
 extern void ui_reset_device_settings(void);
 

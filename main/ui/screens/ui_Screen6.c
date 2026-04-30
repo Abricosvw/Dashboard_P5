@@ -57,9 +57,11 @@ static lv_obj_t *ui_Container_GaugeList = NULL;
 // Platform List Container
 static lv_obj_t *ui_Container_PlatformList = NULL;
 
-// AI Status Objects (WiFi Status removed)
-lv_obj_t *ui_Container_AIStatus = NULL;
+// AI Status Objects and Lua Terminal
 lv_obj_t *ui_Label_AIInfo = NULL;
+lv_obj_t *ui_TextArea_Lua = NULL;
+lv_obj_t *ui_Button_Run_Rule = NULL;
+lv_obj_t *ui_Button_Save_Rule = NULL;
 
 // Settings state
 static int settings_modified = 0;
@@ -105,6 +107,9 @@ static void ai_button_event_cb(lv_event_t *e); // New callback
 static void intro_sound_event_cb(lv_event_t *e);
 static void wifi_button_event_cb(lv_event_t *e);
 static void voice_ai_event_cb(lv_event_t *e);
+static void lua_run_event_cb(lv_event_t *e);
+static void lua_save_event_cb(lv_event_t *e);
+static void ta_event_cb(lv_event_t *e);
 // WiFi status update removed
 
 void ui_update_touch_cursor_screen6(void *point);
@@ -435,6 +440,33 @@ static void gauge_checkbox_event_cb(lv_event_t *e) {
   ui_update_global_layout();
 }
 
+static void lua_run_event_cb(lv_event_t *e) {
+  if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+    ESP_LOGI("SCREEN6", "Run ESP-Claw Lua Rule");
+    if(ui_TextArea_Lua) {
+      const char * code = lv_textarea_get_text(ui_TextArea_Lua);
+      ESP_LOGI("SCREEN6", "Lua Code:\n%s", code);
+      // Run the code via Lua Manager
+      extern esp_err_t lua_manager_execute(const char *script);
+      lua_manager_execute(code);
+    }
+  }
+}
+
+static void lua_save_event_cb(lv_event_t *e) {
+  if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+    ESP_LOGI("SCREEN6", "Save ESP-Claw Rule");
+    // TODO: Pass to ESP-Claw engine to save rule
+  }
+}
+
+static void ta_event_cb(lv_event_t *e) {
+  // Keyboard is not created here; user can edit text via the
+  // existing WiFi keyboard popup or AI-generated injection.
+  // This callback is kept as a placeholder for future integration.
+  (void)e;
+}
+
 // Platform checkbox event callback (Mutual Exclusion)
 static void platform_checkbox_event_cb(lv_event_t *e) {
   lv_obj_t *cb = lv_event_get_target(e);
@@ -715,31 +747,48 @@ void ui_Screen6_screen_init(void) {
                         NULL);
   }
 
-  // --- AI Status Panel (Full Width, WiFi Status removed) ---
-  lv_obj_t *ai_title_lbl = lv_label_create(ui_Screen6);
-  lv_label_set_text(ai_title_lbl, "AI Assistant Status:");
-  lv_obj_set_style_text_color(ai_title_lbl, lv_color_hex(0x00FF88), 0);
-  lv_obj_align(ai_title_lbl, LV_ALIGN_TOP_MID, 0, 820);
-
-  ui_Container_AIStatus = lv_obj_create(ui_Screen6);
-  lv_obj_set_size(ui_Container_AIStatus, 700, 380);
-  lv_obj_align(ui_Container_AIStatus, LV_ALIGN_TOP_MID, 0, 850);
-  lv_obj_set_style_bg_color(ui_Container_AIStatus, lv_color_hex(0x1a1a1a), 0);
-  lv_obj_set_style_border_width(ui_Container_AIStatus, 1, 0);
-  lv_obj_set_style_border_color(ui_Container_AIStatus, lv_color_hex(0x00FF88),
-                                0);
-  lv_obj_set_flex_flow(ui_Container_AIStatus, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_scrollbar_mode(ui_Container_AIStatus, LV_SCROLLBAR_MODE_AUTO);
-  lv_obj_set_style_pad_all(ui_Container_AIStatus, 10, 0);
-
-  ui_Label_AIInfo = lv_label_create(ui_Container_AIStatus);
-  lv_label_set_text(ui_Label_AIInfo, "AI: Idle\nWaiting for trigger...");
+  // --- ESP-Claw Terminal ---
+  ui_Label_AIInfo = lv_label_create(ui_Screen6);
+  lv_label_set_long_mode(ui_Label_AIInfo, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  lv_obj_set_width(ui_Label_AIInfo, 500); // Fit between nav buttons
+  lv_label_set_text(ui_Label_AIInfo, "AI: Idle | Waiting for trigger...");
+  lv_obj_set_style_text_align(ui_Label_AIInfo, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_color(ui_Label_AIInfo, lv_color_white(), 0);
   lv_obj_set_style_text_font(ui_Label_AIInfo, &montserrat_20_en_ru, 0);
-  lv_label_set_long_mode(ui_Label_AIInfo, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(ui_Label_AIInfo, lv_pct(95));
-  lv_obj_set_height(ui_Label_AIInfo, LV_SIZE_CONTENT);
-  lv_obj_set_flex_grow(ui_Label_AIInfo, 1);
+  lv_obj_align(ui_Label_AIInfo, LV_ALIGN_BOTTOM_MID, 0, -35);
+
+  // Lua Terminal Text Area
+  ui_TextArea_Lua = lv_textarea_create(ui_Screen6);
+  lv_obj_set_size(ui_TextArea_Lua, 690, 250); // Make it slightly taller
+  lv_obj_align(ui_TextArea_Lua, LV_ALIGN_TOP_MID, 0, 545);
+  lv_obj_set_style_bg_color(ui_TextArea_Lua, lv_color_hex(0x000000), 0);
+  lv_obj_set_style_text_color(ui_TextArea_Lua, lv_color_hex(0x00FF88), 0); // Hackers green text
+  lv_obj_set_style_text_font(ui_TextArea_Lua, &montserrat_20_en_ru, 0);
+  lv_textarea_set_text(ui_TextArea_Lua, "-- ESP-Claw generated rule will appear here\n\nif engine_temp > 95 then\n  enable_fans()\nend");
+  lv_obj_add_event_cb(ui_TextArea_Lua, ta_event_cb, LV_EVENT_ALL, NULL);
+
+  // Action Buttons
+  ui_Button_Run_Rule = lv_btn_create(ui_Screen6);
+  lv_obj_set_size(ui_Button_Run_Rule, 150, 40);
+  lv_obj_align(ui_Button_Run_Rule, LV_ALIGN_TOP_LEFT, 15, 805);
+  lv_obj_set_style_bg_color(ui_Button_Run_Rule, lv_color_hex(0x00D4FF), 0);
+  lv_obj_add_event_cb(ui_Button_Run_Rule, lua_run_event_cb, LV_EVENT_CLICKED, NULL);
+  lv_obj_t *run_lbl = lv_label_create(ui_Button_Run_Rule);
+  lv_label_set_text(run_lbl, "Run Rule");
+  lv_obj_center(run_lbl);
+
+  ui_Button_Save_Rule = lv_btn_create(ui_Screen6);
+  lv_obj_set_size(ui_Button_Save_Rule, 180, 40);
+  lv_obj_align(ui_Button_Save_Rule, LV_ALIGN_TOP_LEFT, 180, 805);
+  lv_obj_set_style_bg_color(ui_Button_Save_Rule, lv_color_hex(0x00FF88), 0);
+  lv_obj_add_event_cb(ui_Button_Save_Rule, lua_save_event_cb, LV_EVENT_CLICKED, NULL);
+  lv_obj_t *save_rule_lbl = lv_label_create(ui_Button_Save_Rule);
+  lv_label_set_text(save_rule_lbl, "Save to ESP-Claw");
+  lv_obj_set_style_text_color(save_rule_lbl, lv_color_black(), 0);
+  lv_obj_center(save_rule_lbl);
+
+  // Note: Virtual keyboard removed to save memory.
+  // Lua code is injected by the AI or edited via text input.
 
   // Load saved settings and update button states
   ui_Screen6_load_settings();
@@ -755,6 +804,13 @@ void ui_Screen6_screen_init(void) {
 void ui_Screen6_set_ai_info(const char *text) {
   if (ui_Label_AIInfo) {
     lv_label_set_text(ui_Label_AIInfo, text);
+  }
+}
+
+// Update Lua Terminal text
+void ui_Screen6_set_lua_terminal_text(const char *text) {
+  if (ui_TextArea_Lua) {
+    lv_textarea_set_text(ui_TextArea_Lua, text);
   }
 }
 
