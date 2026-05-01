@@ -165,10 +165,6 @@ esp_err_t wifi_init_ap(const char *ssid, const char *pass) {
   if (err != ESP_OK)
     return err;
 
-  // Start AI Manager even in AP mode
-  ai_manager_init();
-  ai_manager_start();
-
   return ESP_OK;
 }
 
@@ -276,12 +272,6 @@ esp_err_t wifi_init_apsta(const char *ap_ssid, const char *ap_pass,
 
   ESP_LOGI(TAG, "WiFi AP+STA mode initialized successfully!");
   ESP_LOGI(TAG, "  AP IP: 192.168.4.1");
-
-  // CRITICAL FIX: Start AI Manager immediately so it can catch button clicks
-  // It doesn't need WiFi/Time to listen for Wake Word or Button.
-  // Network calls inside AI Manager will wait for time sync if needed.
-  ai_manager_init();
-  ai_manager_start();
 
   return ESP_OK;
 }

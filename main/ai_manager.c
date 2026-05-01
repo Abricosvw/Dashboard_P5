@@ -9,6 +9,7 @@
 #include "esp_mac.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
+#include "esp_sntp.h"
 #include "freertos/task.h"
 #include "lvgl.h"
 #include "mbedtls/base64.h"
@@ -154,6 +155,15 @@ static void update_ui_status(const char *text) {
 
 // Function to list available models for this API key
 static void list_available_models(void *pvParameters) {
+  ESP_LOGI(TAG, "Waiting for network & time sync before checking models...");
+  
+  // Wait for time sync (indicates network is up and TLS can be verified)
+  extern void ai_start_after_time_sync(void *pvParameters); // Just using the SNTP check logic
+  int retry = 0;
+  while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && ++retry < 30) {
+    vTaskDelay(pdMS_TO_TICKS(1000));
+  }
+
   ESP_LOGI(TAG, "Checking available models (Background Task)...");
   char url[256];
   snprintf(url, sizeof(url),
@@ -245,25 +255,45 @@ void ai_manager_set_voice_activation(bool enabled) {
   ESP_LOGI(TAG, "Voice activation %s", enabled ? "enabled" : "disabled");
 }
 
+static const esp_afe_sr_iface_t *s_afe_handle = NULL;
+static esp_afe_sr_data_t *s_afe_data = NULL;
+
+static void ai_fetch_task(void *pvParameters) {
+  ESP_LOGI(TAG, "AFE Fetch Task Started");
+  while (1) {
+    if (s_wake_word_paused || !s_voice_activation_enabled || !s_afe_data || !s_afe_handle) {
+      vTaskDelay(pdMS_TO_TICKS(100));
+      continue;
+    }
+
+    // fetch blocks until a frame is ready
+    afe_fetch_result_t *res = s_afe_handle->fetch(s_afe_data);
+
+    if (res && res->wakeup_state == WAKENET_DETECTED) {
+      ESP_LOGI(TAG, "WAKE WORD DETECTED!");
+      // Signal manual trigger to feed task to ensure synchronized pause
+      s_manual_trigger_requested = true;
+    } else {
+      // Yield to prevent watchdog if fetch doesn't block
+      vTaskDelay(1);
+    }
+  }
+}
+
 static void ai_wake_word_task(void *pvParameters) {
   ESP_LOGI(TAG, "Wake Word Task Started");
 
   // 0. Initialize Models from Flash Partition
-  // On ESP32-P4, models are stored in a dedicated partition named "model"
   srmodel_list_t *models = esp_srmodel_init("model");
   if (!models) {
     ESP_LOGE(TAG, "Failed to initialize SR models from partition 'model'!");
     vTaskDelete(NULL);
     return;
   }
-  ESP_LOGI(TAG, "SR Models initialized successfully. Found %d models.",
-           models->num);
-  for (int i = 0; i < models->num; i++) {
-    ESP_LOGI(TAG, "  - %s", models->model_name[i]);
-  }
+  ESP_LOGI(TAG, "SR Models initialized successfully. Found %d models.", models->num);
 
   // 1. Initialize AFE (Acoustic Front-End)
-  const esp_afe_sr_iface_t *afe_handle = &esp_afe_sr_v1;
+  s_afe_handle = &esp_afe_sr_v1;
   afe_config_t afe_config = AFE_CONFIG_DEFAULT();
   afe_config.wakenet_init = true;
   afe_config.aec_init = false;
@@ -271,12 +301,10 @@ static void ai_wake_word_task(void *pvParameters) {
   afe_config.vad_init = true;
   afe_config.voice_communication_init = false;
   afe_config.afe_linear_gain = 3.0; // Boost sensitivity
-
   afe_config.pcm_config.total_ch_num = 2; // Total MUST be mic_num + ref_num
   afe_config.pcm_config.mic_num = 1;      // Mic on Ch0
   afe_config.pcm_config.ref_num = 1;      // Ref on Ch1 (we will zero it out)
 
-  // Set model name explicitly for ESP32-P4 if default macro is NULL
 #if CONFIG_SR_WN_WN9_HILEXIN
   afe_config.wakenet_model_name = "wn9_hilexin";
 #elif CONFIG_SR_WN_WN9_JARVIS_TTS
@@ -284,20 +312,17 @@ static void ai_wake_word_task(void *pvParameters) {
 #elif CONFIG_SR_WN_WN9_HIESP
   afe_config.wakenet_model_name = "wn9_hiesp";
 #else
-  // Fallback to macro if defined, otherwise AFE will fail to create
   afe_config.wakenet_model_name = WAKENET_MODEL_NAME;
 #endif
 
-  esp_afe_sr_data_t *afe_data = afe_handle->create_from_config(&afe_config);
-  if (!afe_data) {
-    ESP_LOGE(TAG,
-             "Failed to create AFE data (check wake word models in sdkconfig)");
+  s_afe_data = s_afe_handle->create_from_config(&afe_config);
+  if (!s_afe_data) {
+    ESP_LOGE(TAG, "Failed to create AFE data (check wake word models in sdkconfig)");
     vTaskDelete(NULL);
     return;
   }
   ESP_LOGI(TAG, "AFE created successfully with model: %s",
-           afe_config.wakenet_model_name ? afe_config.wakenet_model_name
-                                         : "NULL");
+           afe_config.wakenet_model_name ? afe_config.wakenet_model_name : "NULL");
 
   i2s_chan_handle_t rx_handle = audio_get_rx_handle();
   if (!rx_handle) {
@@ -306,21 +331,12 @@ static void ai_wake_word_task(void *pvParameters) {
     return;
   }
 
-  // Buffers for I2S (Stereo) and AFE (Feed as Stereo but one is Zero)
-  int audio_chunksize = afe_handle->get_feed_chunksize(afe_data);
-  int n_ch_afe = 2; // Matches mic_num + ref_num
-  int n_ch_i2s = 2; // I2S hardware is stereo
+  int audio_chunksize = s_afe_handle->get_feed_chunksize(s_afe_data);
+  int n_ch_afe = 2;
+  int n_ch_i2s = 2;
 
-  ESP_LOGI(
-      TAG,
-      "AFE chunk size: %d samples, I2S buffer: %d bytes, AFE buffer: %d bytes",
-      audio_chunksize, audio_chunksize * sizeof(int16_t) * n_ch_i2s,
-      audio_chunksize * sizeof(int16_t) * n_ch_afe);
-
-  int16_t *i2s_stereo_buffer =
-      malloc(audio_chunksize * sizeof(int16_t) * n_ch_i2s);
-  int16_t *afe_feed_buffer =
-      malloc(audio_chunksize * sizeof(int16_t) * n_ch_afe);
+  int16_t *i2s_stereo_buffer = malloc(audio_chunksize * sizeof(int16_t) * n_ch_i2s);
+  int16_t *afe_feed_buffer = malloc(audio_chunksize * sizeof(int16_t) * n_ch_afe);
 
   if (!i2s_stereo_buffer || !afe_feed_buffer) {
     ESP_LOGE(TAG, "Failed to allocate WWD buffers");
@@ -330,7 +346,10 @@ static void ai_wake_word_task(void *pvParameters) {
     return;
   }
 
-  ESP_LOGI(TAG, "Wake word task entering loop...");
+  // Start fetch task
+  xTaskCreatePinnedToCore(ai_fetch_task, "ai_fetch_task", 8192, NULL, 5, NULL, 1);
+
+  ESP_LOGI(TAG, "Wake word feed task entering loop...");
   while (1) {
     // 2.A Check if manual trigger was requested via UI button
     if (s_manual_trigger_requested) {
@@ -342,88 +361,30 @@ static void ai_wake_word_task(void *pvParameters) {
     }
 
     if (!s_voice_activation_enabled || s_wake_word_paused) {
-      static int pause_log_cnt = 0;
-      if (++pause_log_cnt >= 50) {
-        ESP_LOGI(TAG, "AI Loop Paused: enabled=%d, paused=%d",
-                 s_voice_activation_enabled, s_wake_word_paused);
-        pause_log_cnt = 0;
-      }
       vTaskDelay(pdMS_TO_TICKS(100));
       continue;
     }
 
-    // Ensure sample rate is correct for AFE (16kHz)
-    // If another task changed it, we should ideally wait or reset it.
-    // audio_manager now handles the reset, but we check here for safety.
-
     size_t bytes_read = 0;
-    // 1. Read Stereo from I2S hardware
-    // Use short timeout if we just want to check for button triggers
-    int timeout_ms =
-        (s_wake_word_paused || !s_voice_activation_enabled) ? 20 : 200;
+    int timeout_ms = (s_wake_word_paused || !s_voice_activation_enabled) ? 20 : 200;
 
-    // DEBUG: Start timing
-    uint32_t t_start = (uint32_t)esp_log_timestamp();
+    esp_err_t ret = i2s_channel_read(rx_handle, i2s_stereo_buffer,
+                                     audio_chunksize * sizeof(int16_t) * n_ch_i2s,
+                                     &bytes_read, pdMS_TO_TICKS(timeout_ms));
 
-    esp_err_t ret =
-        i2s_channel_read(rx_handle, i2s_stereo_buffer,
-                         audio_chunksize * sizeof(int16_t) * n_ch_i2s,
-                         &bytes_read, pdMS_TO_TICKS(timeout_ms));
-
-    uint32_t t_read = (uint32_t)esp_log_timestamp();
-
-    static int heartbeat_cnt = 0;
-    if (++heartbeat_cnt >= 50) {
-      ESP_LOGI(TAG,
-               "AI Task Heartbeat: paused=%d, I2S_ret=%d, bytes=%d, chunk=%d, "
-               "t_read=%" PRIu32 " ms",
-               s_wake_word_paused, ret, (int)bytes_read, audio_chunksize,
-               (uint32_t)(t_read - t_start));
-      heartbeat_cnt = 0;
-    }
-
-    // Immediate check after read (in case read blocked for some reason)
     if (s_manual_trigger_requested)
       continue;
 
     size_t expected_bytes = audio_chunksize * sizeof(int16_t) * n_ch_i2s;
     if (ret == ESP_OK && bytes_read == expected_bytes) {
-      // 2. Prepare AFE data
+      // Prepare AFE data
       for (int i = 0; i < audio_chunksize; i++) {
         afe_feed_buffer[i * 2] = i2s_stereo_buffer[i * 2]; // Mic from L
         afe_feed_buffer[i * 2 + 1] = 0;                    // Zero the Ref
       }
 
-      // 3. Feed and fetch
-      uint32_t t_feed_start = (uint32_t)esp_log_timestamp();
-      afe_handle->feed(afe_data, afe_feed_buffer);
-      uint32_t t_after_feed = (uint32_t)esp_log_timestamp();
-      afe_fetch_result_t *res = afe_handle->fetch(afe_data);
-      uint32_t t_fetch_end = (uint32_t)esp_log_timestamp();
-
-      uint32_t feed_time = t_after_feed - t_feed_start;
-      uint32_t fetch_time = t_fetch_end - t_after_feed;
-
-      if (feed_time > 100 || fetch_time > 500) {
-        ESP_LOGW(TAG, "AFE Timing: feed=%" PRIu32 " ms, fetch=%" PRIu32 " ms",
-                 feed_time, fetch_time);
-      }
-
-      static int log_cnt = 0;
-      if (++log_cnt >= 30) { // Log every ~1s heartbeat
-        if (res) {
-          if (res->data_volume > -50.0 || res->wakeup_state > 0) {
-            ESP_LOGI(TAG, "WWD Loop: Vol=%.1f dB, VAD=%d, State=%d",
-                     res->data_volume, res->vad_state, res->wakeup_state);
-          }
-        }
-        log_cnt = 0;
-      }
-
-      if (res && res->wakeup_state == WAKENET_DETECTED) {
-        ESP_LOGI(TAG, "WAKE WORD DETECTED!");
-        process_ai_interaction();
-      }
+      // Feed AFE (Fetch is now in separate task)
+      s_afe_handle->feed(s_afe_data, afe_feed_buffer);
     } else if (ret != ESP_ERR_TIMEOUT) {
       ESP_LOGW(TAG, "I2S Read Error: %s", esp_err_to_name(ret));
     }
@@ -431,7 +392,7 @@ static void ai_wake_word_task(void *pvParameters) {
 
   free(i2s_stereo_buffer);
   free(afe_feed_buffer);
-  afe_handle->destroy(afe_data);
+  s_afe_handle->destroy(s_afe_data);
   vTaskDelete(NULL);
 }
 
@@ -690,9 +651,24 @@ static void process_ai_interaction(void) {
   esp_http_client_set_header(client, "Content-Type", "application/json");
 
   // Use streaming API to capture response body
-  esp_err_t err = esp_http_client_open(client, strlen(post_data));
+  esp_err_t err = ESP_FAIL;
+  int retries = 3;
+  while (retries-- > 0) {
+    ESP_LOGI(TAG, "Attempting to connect to Gemini API... (retries left: %d)", retries);
+    err = esp_http_client_open(client, strlen(post_data));
+    if (err == ESP_OK) {
+      break;
+    }
+    ESP_LOGW(TAG, "Connection failed: %s. Retrying in 2s...", esp_err_to_name(err));
+    vTaskDelay(pdMS_TO_TICKS(2000));
+    // Must cleanup and re-init client for a clean retry state
+    esp_http_client_cleanup(client);
+    client = esp_http_client_init(&http_cfg);
+    esp_http_client_set_header(client, "Content-Type", "application/json");
+  }
+
   if (err != ESP_OK) {
-    ESP_LOGE(TAG, "Failed to open HTTP connection: %s", esp_err_to_name(err));
+    ESP_LOGE(TAG, "Failed to open HTTP connection after retries: %s", esp_err_to_name(err));
     update_ui_status("❌ Ошибка сети\n\nНе удалось подключиться");
     free(post_data);
     esp_http_client_cleanup(client);
