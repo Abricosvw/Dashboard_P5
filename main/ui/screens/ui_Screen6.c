@@ -60,6 +60,7 @@ static lv_obj_t *ui_Container_PlatformList = NULL;
 // AI Status Objects and Lua Terminal
 lv_obj_t *ui_Label_AIInfo = NULL;
 lv_obj_t *ui_TextArea_Lua = NULL;
+lv_obj_t *ui_Keyboard_Lua = NULL; // Re-added for dynamic keyboard
 lv_obj_t *ui_Button_Run_Rule = NULL;
 lv_obj_t *ui_Button_Save_Rule = NULL;
 
@@ -461,10 +462,34 @@ static void lua_save_event_cb(lv_event_t *e) {
 }
 
 static void ta_event_cb(lv_event_t *e) {
-  // Keyboard is not created here; user can edit text via the
-  // existing WiFi keyboard popup or AI-generated injection.
-  // This callback is kept as a placeholder for future integration.
-  (void)e;
+  lv_event_code_t code = lv_event_get_code(e);
+  lv_obj_t *ta = lv_event_get_target(e);
+  
+  if (code == LV_EVENT_FOCUSED || code == LV_EVENT_CLICKED) {
+    if (ui_Keyboard_Lua == NULL) {
+      ui_Keyboard_Lua = lv_keyboard_create(ui_Screen6);
+      lv_obj_set_size(ui_Keyboard_Lua, 720, 450);
+      lv_obj_align(ui_Keyboard_Lua, LV_ALIGN_BOTTOM_MID, 0, -50); // Just above nav buttons
+      lv_keyboard_set_textarea(ui_Keyboard_Lua, ta);
+    }
+    // Shift textarea up so it's not hidden by keyboard
+    lv_obj_set_y(ta, 80);
+    lv_obj_move_foreground(ta);
+    if (ui_Keyboard_Lua) lv_obj_move_foreground(ui_Keyboard_Lua);
+  } else if (code == LV_EVENT_DEFOCUSED || code == LV_EVENT_READY || code == LV_EVENT_CANCEL) {
+    if (ui_Keyboard_Lua != NULL) {
+      lv_obj_del(ui_Keyboard_Lua);
+      ui_Keyboard_Lua = NULL;
+    }
+    // Restore textarea position
+    lv_obj_set_y(ta, 545);
+    lv_textarea_clear_selection(ta);
+    
+    // Explicitly clear focus if closed via keyboard so clicking it again works
+    if (code == LV_EVENT_READY || code == LV_EVENT_CANCEL) {
+      lv_obj_clear_state(ta, LV_STATE_FOCUSED);
+    }
+  }
 }
 
 // Platform checkbox event callback (Mutual Exclusion)
@@ -759,18 +784,26 @@ void ui_Screen6_screen_init(void) {
 
   // Lua Terminal Text Area
   ui_TextArea_Lua = lv_textarea_create(ui_Screen6);
-  lv_obj_set_size(ui_TextArea_Lua, 690, 250); // Make it slightly taller
+  lv_obj_set_size(ui_TextArea_Lua, 690, 350); // Increased size
   lv_obj_align(ui_TextArea_Lua, LV_ALIGN_TOP_MID, 0, 545);
   lv_obj_set_style_bg_color(ui_TextArea_Lua, lv_color_hex(0x000000), 0);
   lv_obj_set_style_text_color(ui_TextArea_Lua, lv_color_hex(0x00FF88), 0); // Hackers green text
   lv_obj_set_style_text_font(ui_TextArea_Lua, &montserrat_20_en_ru, 0);
+  // Add padding to make it look like a real terminal
+  lv_obj_set_style_pad_all(ui_TextArea_Lua, 15, 0);
+  
+  // Make cursor white and clearly visible
+  lv_obj_set_style_bg_color(ui_TextArea_Lua, lv_color_hex(0xFFFFFF), LV_PART_CURSOR);
+  lv_obj_set_style_bg_opa(ui_TextArea_Lua, LV_OPA_COVER, LV_PART_CURSOR);
+  
   lv_textarea_set_text(ui_TextArea_Lua, "-- ESP-Claw generated rule will appear here\n\nif engine_temp > 95 then\n  enable_fans()\nend");
+  lv_textarea_set_cursor_click_pos(ui_TextArea_Lua, true);
   lv_obj_add_event_cb(ui_TextArea_Lua, ta_event_cb, LV_EVENT_ALL, NULL);
 
   // Action Buttons
   ui_Button_Run_Rule = lv_btn_create(ui_Screen6);
   lv_obj_set_size(ui_Button_Run_Rule, 150, 40);
-  lv_obj_align(ui_Button_Run_Rule, LV_ALIGN_TOP_LEFT, 15, 805);
+  lv_obj_align(ui_Button_Run_Rule, LV_ALIGN_TOP_LEFT, 15, 915); // Shifted down due to larger terminal
   lv_obj_set_style_bg_color(ui_Button_Run_Rule, lv_color_hex(0x00D4FF), 0);
   lv_obj_add_event_cb(ui_Button_Run_Rule, lua_run_event_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *run_lbl = lv_label_create(ui_Button_Run_Rule);
@@ -779,7 +812,7 @@ void ui_Screen6_screen_init(void) {
 
   ui_Button_Save_Rule = lv_btn_create(ui_Screen6);
   lv_obj_set_size(ui_Button_Save_Rule, 180, 40);
-  lv_obj_align(ui_Button_Save_Rule, LV_ALIGN_TOP_LEFT, 180, 805);
+  lv_obj_align(ui_Button_Save_Rule, LV_ALIGN_TOP_LEFT, 180, 915); // Shifted down due to larger terminal
   lv_obj_set_style_bg_color(ui_Button_Save_Rule, lv_color_hex(0x00FF88), 0);
   lv_obj_add_event_cb(ui_Button_Save_Rule, lua_save_event_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *save_rule_lbl = lv_label_create(ui_Button_Save_Rule);
