@@ -24,3 +24,8 @@ void ai_manager_trigger_listening(void);
  * @brief Enable or disable voice wake-word activation
  */
 void ai_manager_set_voice_activation(bool enabled);
+
+/**
+ * @brief Send a text query directly to Gemini (no audio)
+ */
+void ai_manager_send_text_query(const char *text);

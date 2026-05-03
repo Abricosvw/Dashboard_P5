@@ -6,6 +6,7 @@
 #include "freertos/task.h"
 #include "sd_card_manager.h"
 #include "ui/screens/ui_Screen3.h" // Include Screen3 header
+#include "lua_manager.h"
 #include <stdio.h>
 #include <time.h>
 
@@ -48,6 +49,9 @@ void can_rx_task(void *pvParameters) {
     if (twai_receive(&message, pdMS_TO_TICKS(1000)) == ESP_OK) {
       // Process message using the powerful new parser
       parse_can_message(&message);
+
+      // Dispatch to Lua script engine
+      lua_manager_handle_can_rx(message.identifier, message.data, message.data_length_code);
 
       // Send to UI Sniffer / Logger
       // Must take LVGL lock because we are calling UI functions

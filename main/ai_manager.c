@@ -131,7 +131,7 @@ static const char *FUNCTION_DECLARATIONS =
     "  \"parameters\": {\"type\": \"object\", \"properties\": {}}"
     "},{"
     "  \"name\": \"generate_lua_rule\","
-    "  \"description\": \"Сгенерировать Lua скрипт для ESP-Claw терминала\","
+    "  \"description\": \"Сгенерировать Lua скрипт. Доступные функции: get_rpm(), get_engine_temp(), set_fan_speed(speed), show_warning(msg), log(msg), start_can_log(), stop_can_log(), switch_screen(1-8), click_btn_run(), click_btn_save(), click_btn_help(), set_gauge_visible(id, bool), gpio_set(pin, level), gpio_get(pin)\","
     "  \"parameters\": {"
     "    \"type\": \"object\","
     "    \"properties\": {"
@@ -512,6 +512,131 @@ static void speak_response(const char *text) {
 
   // Play a simple notification sound if available
   // audio_play_tone(880, 200);  // Simple beep for now
+}
+
+static void ai_text_query_task(void *pvParameters) {
+  char *query_text = (char *)pvParameters;
+  ESP_LOGI(TAG, "Gemini Text Query Starting: %s", query_text);
+  
+  update_ui_status("🌐 Подключаюсь к серверу...\n\nОтправка текстового запроса");
+
+  cJSON *root = cJSON_CreateObject();
+
+  // Add system instruction
+  cJSON *system_inst = cJSON_AddObjectToObject(root, "system_instruction");
+  cJSON *sys_parts = cJSON_AddArrayToObject(system_inst, "parts");
+  cJSON *sys_text = cJSON_CreateObject();
+  cJSON_AddStringToObject(sys_text, "text", SYSTEM_PROMPT);
+  cJSON_AddItemToArray(sys_parts, sys_text);
+
+  // Add contents with user text
+  cJSON *contents = cJSON_AddArrayToObject(root, "contents");
+  cJSON *content = cJSON_CreateObject();
+  cJSON_AddItemToArray(contents, content);
+  cJSON *parts = cJSON_AddArrayToObject(content, "parts");
+
+  cJSON *part_text = cJSON_CreateObject();
+  cJSON_AddStringToObject(part_text, "text", query_text);
+  cJSON_AddItemToArray(parts, part_text);
+
+  // Add tools array with function declarations
+  cJSON *tools = cJSON_AddArrayToObject(root, "tools");
+  cJSON *tool = cJSON_CreateObject();
+  cJSON_AddItemToArray(tools, tool);
+  cJSON *func_decls = cJSON_Parse(FUNCTION_DECLARATIONS);
+  if (func_decls) {
+    cJSON_AddItemToObject(tool, "functionDeclarations", func_decls);
+  }
+
+  char *post_data = cJSON_PrintUnformatted(root);
+  cJSON_Delete(root);
+
+  // Prepare HTTP client
+  char url[256];
+  snprintf(url, sizeof(url), "%s?key=%s", GEMINI_API_ENDPOINT, GEMINI_API_KEY);
+  
+  esp_http_client_config_t http_cfg = {
+      .url = url,
+      .crt_bundle_attach = esp_crt_bundle_attach,
+      .method = HTTP_METHOD_POST,
+      .timeout_ms = 45000,
+      .buffer_size = 8192,
+      .buffer_size_tx = 4096,
+  };
+  esp_http_client_handle_t client = esp_http_client_init(&http_cfg);
+  esp_http_client_set_header(client, "Content-Type", "application/json");
+
+  esp_err_t err = ESP_FAIL;
+  int retries = 3;
+  while (retries-- > 0) {
+    err = esp_http_client_open(client, strlen(post_data));
+    if (err == ESP_OK) break;
+    vTaskDelay(pdMS_TO_TICKS(2000));
+    esp_http_client_cleanup(client);
+    client = esp_http_client_init(&http_cfg);
+    esp_http_client_set_header(client, "Content-Type", "application/json");
+  }
+
+  if (err != ESP_OK) {
+    update_ui_status("❌ Ошибка сети\n\nНе удалось подключиться");
+    free(post_data);
+    esp_http_client_cleanup(client);
+    free(query_text);
+    vTaskDelete(NULL);
+    return;
+  }
+
+  int wlen = esp_http_client_write(client, post_data, strlen(post_data));
+  if (wlen < 0) {
+    update_ui_status("❌ Ошибка отправки\n\nПроверьте интернет");
+    free(post_data);
+    esp_http_client_cleanup(client);
+    free(query_text);
+    vTaskDelete(NULL);
+    return;
+  }
+
+  update_ui_status("⏳ Жду ответ...\n\nСервер обрабатывает запрос");
+  int content_length = esp_http_client_fetch_headers(client);
+  int status_code = esp_http_client_get_status_code(client);
+
+  char *res_buf = malloc(8192);
+  if (res_buf) {
+    int total_read = 0;
+    int read_len;
+    while ((read_len = esp_http_client_read(client, res_buf + total_read, 8191 - total_read)) > 0) {
+      total_read += read_len;
+      if (total_read >= 8191) break;
+    }
+    res_buf[total_read] = 0;
+
+    if (status_code == 200 && total_read > 0) {
+      handle_gemini_response(res_buf);
+    } else if (total_read > 0) {
+      char status_err[128];
+      snprintf(status_err, sizeof(status_err), "❌ Ошибка HTTP %d\n\nСм. логи", status_code);
+      update_ui_status(status_err);
+    } else {
+      char status_err[64];
+      snprintf(status_err, sizeof(status_err), "❌ Ошибка HTTP %d\n\nПустой ответ", status_code);
+      update_ui_status(status_err);
+    }
+    free(res_buf);
+  }
+
+  esp_http_client_close(client);
+  free(post_data);
+  esp_http_client_cleanup(client);
+  free(query_text);
+  vTaskDelete(NULL);
+}
+
+void ai_manager_send_text_query(const char *text) {
+  if (!text || strlen(text) == 0) return;
+  char *query_copy = strdup(text);
+  if (query_copy) {
+    xTaskCreate(ai_text_query_task, "ai_text_query", 8192, query_copy, 5, NULL);
+  }
 }
 
 void ai_manager_trigger_listening(void) {

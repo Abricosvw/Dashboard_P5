@@ -59,10 +59,13 @@ static lv_obj_t *ui_Container_PlatformList = NULL;
 
 // AI Status Objects and Lua Terminal
 lv_obj_t *ui_Label_AIInfo = NULL;
+lv_obj_t *ui_TextArea_Gemini = NULL;
 lv_obj_t *ui_TextArea_Lua = NULL;
 lv_obj_t *ui_Keyboard_Lua = NULL; // Re-added for dynamic keyboard
 lv_obj_t *ui_Button_Run_Rule = NULL;
 lv_obj_t *ui_Button_Save_Rule = NULL;
+lv_obj_t *ui_Button_Help_Rule = NULL; // Added Help button
+lv_obj_t *ui_Button_GPIO_Map = NULL; // Added GPIO Map button
 
 // Settings state
 static int settings_modified = 0;
@@ -110,6 +113,7 @@ static void wifi_button_event_cb(lv_event_t *e);
 static void voice_ai_event_cb(lv_event_t *e);
 static void lua_run_event_cb(lv_event_t *e);
 static void lua_save_event_cb(lv_event_t *e);
+static void gemini_ta_event_cb(lv_event_t *e);
 static void ta_event_cb(lv_event_t *e);
 // WiFi status update removed
 
@@ -121,6 +125,7 @@ void ui_Screen6_save_settings(void);
 void ui_Screen6_update_button_states(void);
 void ui_save_device_settings(void);
 void ui_reset_device_settings(void);
+void ui_Screen6_set_ai_info(const char *text);
 
 // Touch handler for general touch events removed - using global handler
 
@@ -457,7 +462,147 @@ static void lua_run_event_cb(lv_event_t *e) {
 static void lua_save_event_cb(lv_event_t *e) {
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
     ESP_LOGI("SCREEN6", "Save ESP-Claw Rule");
-    // TODO: Pass to ESP-Claw engine to save rule
+    if(ui_TextArea_Lua) {
+      const char * code = lv_textarea_get_text(ui_TextArea_Lua);
+      extern esp_err_t lua_manager_save_background_script(const char *script);
+      lua_manager_save_background_script(code);
+      ui_Screen6_set_ai_info("✅ Rule Saved! Running in background...");
+    }
+  }
+}
+
+static void lua_help_close_cb(lv_event_t *e) {
+  lv_obj_t *popup = lv_event_get_user_data(e);
+  if (popup) {
+    lv_obj_del(popup);
+  }
+}
+
+static void lua_help_event_cb(lv_event_t *e) {
+  if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+    ESP_LOGI("SCREEN6", "Show Lua Help");
+    
+    // Create popup background
+    lv_obj_t *popup = lv_obj_create(ui_Screen6);
+    lv_obj_set_size(popup, 600, 400);
+    lv_obj_center(popup);
+    lv_obj_set_style_bg_color(popup, lv_color_hex(0x1a1a1a), 0);
+    lv_obj_set_style_border_width(popup, 2, 0);
+    lv_obj_set_style_border_color(popup, lv_color_hex(0x00D4FF), 0);
+    lv_obj_set_style_pad_all(popup, 20, 0);
+    
+    // Create help text label
+    lv_obj_t *help_text = lv_label_create(popup);
+    extern const char* lua_manager_get_help_text(void);
+    lv_label_set_text(help_text, lua_manager_get_help_text());
+    lv_obj_set_style_text_color(help_text, lv_color_white(), 0);
+    lv_obj_set_style_text_font(help_text, &montserrat_20_en_ru, 0);
+    lv_label_set_long_mode(help_text, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(help_text, 560);
+    lv_obj_align(help_text, LV_ALIGN_TOP_LEFT, 0, 0);
+    
+    // Create close button
+    lv_obj_t *close_btn = lv_btn_create(popup);
+    lv_obj_set_size(close_btn, 120, 40);
+    lv_obj_align(close_btn, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_bg_color(close_btn, lv_color_hex(0xFF3333), 0);
+    lv_obj_add_event_cb(close_btn, lua_help_close_cb, LV_EVENT_CLICKED, popup);
+    
+    lv_obj_t *close_lbl = lv_label_create(close_btn);
+    lv_label_set_text(close_lbl, "Close");
+    lv_obj_center(close_lbl);
+    
+    // Bring to front
+    lv_obj_move_foreground(popup);
+  }
+}
+
+static lv_obj_t *ui_Keyboard_Gemini = NULL;
+
+static void gemini_ta_event_cb(lv_event_t *e) {
+  lv_event_code_t code = lv_event_get_code(e);
+  lv_obj_t *ta = lv_event_get_target(e);
+  
+  if (code == LV_EVENT_FOCUSED || code == LV_EVENT_CLICKED) {
+    if (ui_Keyboard_Gemini == NULL) {
+      ui_Keyboard_Gemini = lv_keyboard_create(ui_Screen6);
+      lv_obj_set_size(ui_Keyboard_Gemini, 720, 450);
+      lv_obj_align(ui_Keyboard_Gemini, LV_ALIGN_BOTTOM_MID, 0, -50); 
+      lv_keyboard_set_textarea(ui_Keyboard_Gemini, ta);
+    }
+    lv_obj_align(ta, LV_ALIGN_BOTTOM_MID, 0, -520); // Move up
+    lv_obj_move_foreground(ta);
+    if (ui_Keyboard_Gemini) lv_obj_move_foreground(ui_Keyboard_Gemini);
+  } else if (code == LV_EVENT_DEFOCUSED || code == LV_EVENT_CANCEL) {
+    if (ui_Keyboard_Gemini != NULL) {
+      lv_obj_del(ui_Keyboard_Gemini);
+      ui_Keyboard_Gemini = NULL;
+    }
+    lv_obj_align(ta, LV_ALIGN_BOTTOM_MID, 0, -80); // Restore position
+    lv_textarea_clear_selection(ta);
+    if (code == LV_EVENT_CANCEL) {
+      lv_obj_clear_state(ta, LV_STATE_FOCUSED);
+    }
+  } else if (code == LV_EVENT_READY) {
+    // Send to Gemini
+    const char *text = lv_textarea_get_text(ta);
+    if (strlen(text) > 0) {
+      extern void ai_manager_send_text_query(const char *text);
+      ai_manager_send_text_query(text);
+      lv_textarea_set_text(ta, ""); // Clear after send
+    }
+    if (ui_Keyboard_Gemini != NULL) {
+      lv_obj_del(ui_Keyboard_Gemini);
+      ui_Keyboard_Gemini = NULL;
+    }
+    lv_obj_align(ta, LV_ALIGN_BOTTOM_MID, 0, -80);
+    lv_obj_clear_state(ta, LV_STATE_FOCUSED);
+  }
+}
+
+static void gpio_map_event_cb(lv_event_t *e) {
+  if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+    ESP_LOGI("SCREEN6", "Show GPIO Map");
+    
+    lv_obj_t *popup = lv_obj_create(ui_Screen6);
+    lv_obj_set_size(popup, 600, 450);
+    lv_obj_center(popup);
+    lv_obj_set_style_bg_color(popup, lv_color_hex(0x1a1a1a), 0);
+    lv_obj_set_style_border_width(popup, 2, 0);
+    lv_obj_set_style_border_color(popup, lv_color_hex(0x00FF88), 0);
+    lv_obj_set_style_pad_all(popup, 20, 0);
+    
+    lv_obj_t *map_text = lv_label_create(popup);
+    lv_label_set_recolor(map_text, true);
+    lv_label_set_text(map_text, 
+      "ESP32-P4 GPIO Map:\n\n"
+      "#FF0000 0-3: JTAG/System (DO NOT USE)#\n"
+      "#FF0000 4,5,7,8: I2C Touch Panel#\n"
+      "#FF0000 9-13, 53: Audio I2S#\n"
+      "#FF0000 14-19, 54: Wi-Fi SDIO#\n"
+      "#FF0000 20,21: CAN Bus#\n"
+      "#FF0000 33: Display Reset#\n"
+      "#FF0000 39-44: SD Card#\n\n"
+      "#00FF00 FREE PINS (SAFE TO USE):#\n"
+      "#00FF00 6, 22-32, 34-38, 45-52#\n"
+    );
+    lv_obj_set_style_text_color(map_text, lv_color_white(), 0);
+    lv_obj_set_style_text_font(map_text, &montserrat_20_en_ru, 0);
+    lv_label_set_long_mode(map_text, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(map_text, 560);
+    lv_obj_align(map_text, LV_ALIGN_TOP_LEFT, 0, 0);
+    
+    lv_obj_t *close_btn = lv_btn_create(popup);
+    lv_obj_set_size(close_btn, 120, 40);
+    lv_obj_align(close_btn, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_bg_color(close_btn, lv_color_hex(0xFF3333), 0);
+    lv_obj_add_event_cb(close_btn, lua_help_close_cb, LV_EVENT_CLICKED, popup);
+    
+    lv_obj_t *close_lbl = lv_label_create(close_btn);
+    lv_label_set_text(close_lbl, "Close");
+    lv_obj_center(close_lbl);
+    
+    lv_obj_move_foreground(popup);
   }
 }
 
@@ -782,6 +927,19 @@ void ui_Screen6_screen_init(void) {
   lv_obj_set_style_text_font(ui_Label_AIInfo, &montserrat_20_en_ru, 0);
   lv_obj_align(ui_Label_AIInfo, LV_ALIGN_BOTTOM_MID, 0, -35);
 
+  // Gemini Text Input Area
+  ui_TextArea_Gemini = lv_textarea_create(ui_Screen6);
+  lv_obj_set_size(ui_TextArea_Gemini, 600, 50); // Single line
+  lv_textarea_set_one_line(ui_TextArea_Gemini, true);
+  lv_textarea_set_placeholder_text(ui_TextArea_Gemini, "Введите запрос для ИИ...");
+  lv_obj_align(ui_TextArea_Gemini, LV_ALIGN_BOTTOM_MID, 0, -80);
+  lv_obj_set_style_text_font(ui_TextArea_Gemini, &montserrat_20_en_ru, 0);
+  lv_obj_set_style_bg_color(ui_TextArea_Gemini, lv_color_hex(0x1a1a1a), 0);
+  lv_obj_set_style_text_color(ui_TextArea_Gemini, lv_color_white(), 0);
+  lv_obj_set_style_border_color(ui_TextArea_Gemini, lv_color_hex(0x00D4FF), 0);
+  lv_obj_set_style_border_width(ui_TextArea_Gemini, 2, 0);
+  lv_obj_add_event_cb(ui_TextArea_Gemini, gemini_ta_event_cb, LV_EVENT_ALL, NULL);
+
   // Lua Terminal Text Area
   ui_TextArea_Lua = lv_textarea_create(ui_Screen6);
   lv_obj_set_size(ui_TextArea_Lua, 690, 350); // Increased size
@@ -796,7 +954,22 @@ void ui_Screen6_screen_init(void) {
   lv_obj_set_style_bg_color(ui_TextArea_Lua, lv_color_hex(0xFFFFFF), LV_PART_CURSOR);
   lv_obj_set_style_bg_opa(ui_TextArea_Lua, LV_OPA_COVER, LV_PART_CURSOR);
   
-  lv_textarea_set_text(ui_TextArea_Lua, "-- ESP-Claw generated rule will appear here\n\nif engine_temp > 95 then\n  enable_fans()\nend");
+  lv_textarea_set_text(ui_TextArea_Lua, 
+    "setTickRate(2)\n"
+    "local counter = 0\n"
+    "canRxAdd(0x123)\n"
+    "function onTick()\n"
+    "    counter = counter + 1\n"
+    "    log(\"onTick work! Counter: \" .. counter)\n"
+    "    txCan(1, 0x600, 0, {counter, 0xAA, 0xBB})\n"
+    "    if counter % 10 == 0 then\n"
+    "        show_warning(\"Lua Tick: \" .. counter)\n"
+    "    end\n"
+    "end\n"
+    "function onCanRx(bus, id, dlc, data)\n"
+    "    log(\"Wow, got CAN frame: \" .. id)\n"
+    "end\n"
+    "log(\"Background script loaded successfully!\")");
   lv_textarea_set_cursor_click_pos(ui_TextArea_Lua, true);
   lv_obj_add_event_cb(ui_TextArea_Lua, ta_event_cb, LV_EVENT_ALL, NULL);
 
@@ -819,6 +992,26 @@ void ui_Screen6_screen_init(void) {
   lv_label_set_text(save_rule_lbl, "Save to ESP-Claw");
   lv_obj_set_style_text_color(save_rule_lbl, lv_color_black(), 0);
   lv_obj_center(save_rule_lbl);
+
+  ui_Button_Help_Rule = lv_btn_create(ui_Screen6);
+  lv_obj_set_size(ui_Button_Help_Rule, 100, 40);
+  lv_obj_align(ui_Button_Help_Rule, LV_ALIGN_TOP_LEFT, 375, 915); // Next to Save button
+  lv_obj_set_style_bg_color(ui_Button_Help_Rule, lv_color_hex(0xFFCC00), 0);
+  lv_obj_add_event_cb(ui_Button_Help_Rule, lua_help_event_cb, LV_EVENT_CLICKED, NULL);
+  lv_obj_t *help_rule_lbl = lv_label_create(ui_Button_Help_Rule);
+  lv_label_set_text(help_rule_lbl, "Help");
+  lv_obj_set_style_text_color(help_rule_lbl, lv_color_black(), 0);
+  lv_obj_center(help_rule_lbl);
+
+  ui_Button_GPIO_Map = lv_btn_create(ui_Screen6);
+  lv_obj_set_size(ui_Button_GPIO_Map, 130, 40);
+  lv_obj_align(ui_Button_GPIO_Map, LV_ALIGN_TOP_LEFT, 490, 915); // Next to Help button
+  lv_obj_set_style_bg_color(ui_Button_GPIO_Map, lv_color_hex(0xFF00FF), 0);
+  lv_obj_add_event_cb(ui_Button_GPIO_Map, gpio_map_event_cb, LV_EVENT_CLICKED, NULL);
+  lv_obj_t *gpio_map_lbl = lv_label_create(ui_Button_GPIO_Map);
+  lv_label_set_text(gpio_map_lbl, "GPIO Map");
+  lv_obj_set_style_text_color(gpio_map_lbl, lv_color_white(), 0);
+  lv_obj_center(gpio_map_lbl);
 
   // Note: Virtual keyboard removed to save memory.
   // Lua code is injected by the AI or edited via text input.
