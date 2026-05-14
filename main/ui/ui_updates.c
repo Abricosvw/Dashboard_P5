@@ -259,10 +259,5 @@ void update_all_gauges(void) {
     lv_label_set_text(ui_Label_Gear_S8, gear_buf);
   }
 
-  // --- Screen 6 WiFi & AI Updates ---
-  if (ui_Label_AIInfo && lv_obj_is_visible(ui_Screen6)) {
-    // AI status could be fetched from ai_manager if it exposed a state
-    // For now, we update it via events or keep it simple
-    // In the future, we can add ai_manager_get_status()
-  }
+  // AI status is now handled via ui_Screen7_set_status() called from ai_manager
 }

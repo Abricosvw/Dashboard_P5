@@ -18,7 +18,10 @@
 #include "wifi_controller.h"
 #include "lua_manager.h"
 #include "ai_manager.h"
+#include "telegram_manager.h"
 #include "wifi_init.h"
+#include "app_capabilities.h"
+#include "app_claw.h"
 #include <dirent.h>
 
 static const char *TAG = "MAIN";
@@ -161,6 +164,20 @@ void app_main(void) {
   ESP_LOGI(TAG, "[9] AI Manager init...");
   ai_manager_init();
   ai_manager_start();
+
+  ESP_LOGI(TAG, "[9.1] ESP-Claw Capabilities init...");
+  app_claw_config_t claw_cfg = {0}; // Defaults from Kconfig will be used
+  app_claw_storage_paths_t claw_paths = {
+      .fatfs_base_path = "/sdcard",
+      .lua_root_dir = "/sdcard/SYSTEM/LUA",
+      .router_rules_path = "/sdcard/SYSTEM/RULES/router.json",
+      .scheduler_rules_path = "/sdcard/SYSTEM/RULES/scheduler.json",
+      .im_attachment_root = "/sdcard/SYSTEM/TELEGRAM",
+  };
+  app_capabilities_init(&claw_cfg, &claw_paths);
+
+  ESP_LOGI(TAG, "[10] Telegram Manager init...");
+  telegram_init();
 
   ESP_LOGI(TAG, "=== System Ready! ===");
 

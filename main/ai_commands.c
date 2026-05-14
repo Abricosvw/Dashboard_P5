@@ -4,6 +4,7 @@
 #include "esp_log.h"
 #include "settings_config.h"
 #include "ui/ui_screen_manager.h"
+#include "ecu_data.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -205,6 +206,107 @@ ai_cmd_result_t ai_cmd_save_settings(void) {
   return result;
 }
 
+ai_cmd_result_t ai_cmd_get_ecu_data(void) {
+  ai_cmd_result_t result = {.success = true, .message = ""};
+  ecu_data_t data;
+  ecu_data_get_copy(&data);
+  
+  snprintf(result.message, sizeof(result.message),
+           "Текущие данные автомобиля:\n"
+           "Обороты: %.0f об/мин\n"
+           "Температура ОЖ: %.0f°C\n"
+           "Давление во впуске: %.2f кПа\n"
+           "Батарея: %.1f В\n"
+           "Скорость: %.0f км/ч",
+           data.engine_rpm, data.clt_temp, data.map_kpa, 
+           data.battery_voltage, data.vehicle_speed);
+  return result;
+}
+
+ai_cmd_result_t ai_cmd_click_ui_button(const char *button_name) {
+  ai_cmd_result_t result = {.success = false, .message = ""};
+  if (!button_name) {
+    snprintf(result.message, sizeof(result.message), "Имя кнопки не указано");
+    return result;
+  }
+
+  screen_id_t target_screen = SCREEN_6; // Default to Settings Screen
+  if (strcmp(button_name, "sniffer") == 0 || 
+      strcmp(button_name, "clear") == 0 || 
+      strcmp(button_name, "record") == 0) {
+      target_screen = SCREEN_3; // CAN Terminal
+  }
+
+  if (example_lvgl_lock(500)) {
+    ui_switch_to_screen(target_screen);
+    example_lvgl_unlock();
+  }
+
+  // Screen 6 Buttons
+  extern lv_obj_t *ui_Button_Help_Rule, *ui_Button_Telegram, *ui_Button_GPIO_Map;
+  extern lv_obj_t *ui_Button_Run_Rule, *ui_Button_Save_Rule;
+  extern lv_obj_t *ui_Button_Demo_Mode, *ui_Button_Enable_Screen3, *ui_Button_Nav_Buttons;
+  extern lv_obj_t *ui_Button_Save_Settings, *ui_Button_Reset_Settings, *ui_Button_Intro_Sound;
+  extern lv_obj_t *ui_Button_Wifi, *ui_Button_Voice_AI, *ui_Button_AI;
+
+  // Screen 3 Buttons
+  extern lv_obj_t *ui_Button_Sniffer, *ui_Button_Clear, *ui_Button_Record;
+
+  lv_obj_t *target_btn = NULL;
+  
+  // Screen 6 Mapping
+  if (strcmp(button_name, "help") == 0) target_btn = ui_Button_Help_Rule;
+  else if (strcmp(button_name, "telegram") == 0) target_btn = ui_Button_Telegram;
+  else if (strcmp(button_name, "gpio") == 0) target_btn = ui_Button_GPIO_Map;
+  else if (strcmp(button_name, "run_lua") == 0) target_btn = ui_Button_Run_Rule;
+  else if (strcmp(button_name, "save_lua") == 0) target_btn = ui_Button_Save_Rule;
+  else if (strcmp(button_name, "demo_mode") == 0) target_btn = ui_Button_Demo_Mode;
+  else if (strcmp(button_name, "enable_screen3") == 0) target_btn = ui_Button_Enable_Screen3;
+  else if (strcmp(button_name, "nav_buttons") == 0) target_btn = ui_Button_Nav_Buttons;
+  else if (strcmp(button_name, "save_settings") == 0) target_btn = ui_Button_Save_Settings;
+  else if (strcmp(button_name, "reset_settings") == 0) target_btn = ui_Button_Reset_Settings;
+  else if (strcmp(button_name, "intro_sound") == 0) target_btn = ui_Button_Intro_Sound;
+  else if (strcmp(button_name, "wifi") == 0) target_btn = ui_Button_Wifi;
+  else if (strcmp(button_name, "voice_ai") == 0) target_btn = ui_Button_Voice_AI;
+  else if (strcmp(button_name, "ai") == 0) target_btn = ui_Button_AI;
+  // Screen 3 Mapping
+  else if (strcmp(button_name, "sniffer") == 0) target_btn = ui_Button_Sniffer;
+  else if (strcmp(button_name, "clear") == 0) target_btn = ui_Button_Clear;
+  else if (strcmp(button_name, "record") == 0) target_btn = ui_Button_Record;
+
+  // Special case: clear_lua clears the Lua terminal text (not a physical button)
+  if (strcmp(button_name, "clear_lua") == 0) {
+      extern void ui_Screen6_set_lua_text(const char *text);
+      vTaskDelay(pdMS_TO_TICKS(100));
+      if (example_lvgl_lock(500)) {
+          ui_Screen6_set_lua_text("");
+          example_lvgl_unlock();
+          result.success = true;
+          snprintf(result.message, sizeof(result.message), "Lua терминал очищен");
+      } else {
+          snprintf(result.message, sizeof(result.message), "Ошибка UI: не удалось очистить терминал");
+      }
+      return result;
+  }
+
+  if (target_btn) {
+      // Delay slightly to let the screen transition finish
+      vTaskDelay(pdMS_TO_TICKS(100));
+      if (example_lvgl_lock(500)) {
+          lv_event_send(target_btn, LV_EVENT_CLICKED, NULL);
+          example_lvgl_unlock();
+          result.success = true;
+          snprintf(result.message, sizeof(result.message), "Кнопка %s нажата", button_name);
+      } else {
+          snprintf(result.message, sizeof(result.message), "Ошибка UI: не удалось нажать кнопку");
+      }
+  } else {
+      snprintf(result.message, sizeof(result.message), "Кнопка %s не найдена", button_name);
+  }
+
+  return result;
+}
+
 // Execute function call from Gemini response
 ai_cmd_result_t ai_execute_function_call(const char *function_name,
                                          const char *args_json) {
@@ -280,6 +382,17 @@ ai_cmd_result_t ai_execute_function_call(const char *function_name,
 
   } else if (strcmp(function_name, "save_settings") == 0) {
     result = ai_cmd_save_settings();
+
+  } else if (strcmp(function_name, "get_ecu_data") == 0) {
+    result = ai_cmd_get_ecu_data();
+
+  } else if (strcmp(function_name, "click_ui_button") == 0) {
+    const char *btn = NULL;
+    if (args) {
+      cJSON *b = cJSON_GetObjectItem(args, "button_name");
+      if (b && cJSON_IsString(b)) btn = b->valuestring;
+    }
+    result = ai_cmd_click_ui_button(btn);
 
   } else {
     snprintf(result.message, sizeof(result.message), "Неизвестная команда: %s",

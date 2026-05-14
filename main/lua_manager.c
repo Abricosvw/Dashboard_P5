@@ -28,6 +28,7 @@ static int g_can_rx_filter_count = 0;
 #include "ui/ui_screen_manager.h"
 #include "ui/ui_layout_manager.h"
 #include "driver/gpio.h"
+#include "telegram_manager.h"
 
 extern lv_obj_t *ui_Button_Run_Rule;
 extern lv_obj_t *ui_Button_Save_Rule;
@@ -65,8 +66,8 @@ static int l_show_warning(lua_State *L) {
     char status_buf[256];
     snprintf(status_buf, sizeof(status_buf), "WARNING: %s", msg);
     if(example_lvgl_lock(100)) {
-        extern void ui_Screen6_set_ai_info(const char *text);
-        ui_Screen6_set_ai_info(status_buf);
+        extern void ui_Screen7_set_status(const char *text);
+        ui_Screen7_set_status(status_buf);
         example_lvgl_unlock();
     }
     return 0;
@@ -193,6 +194,13 @@ static int l_gpio_get(lua_State *L) {
     return 1;
 }
 
+static int l_telegram_send(lua_State *L) {
+    const char *msg = luaL_checkstring(L, 1);
+    ESP_LOGI(TAG, "LUA requested Telegram send: %s", msg);
+    telegram_send_message(msg);
+    return 0;
+}
+
 // --- rusEFI CAN Bindings ---
 
 static int l_txCan(lua_State *L) {
@@ -281,6 +289,7 @@ static const lua_binding_t g_lua_bindings[] = {
     {"set_gauge_visible", l_set_gauge_visible, "set_gauge_visible(id, visible) - Shows/hides gauge (e.g. 3=RPM)."},
     {"gpio_set", l_gpio_set, "gpio_set(pin, level) - Sets safe pin to 0 or 1."},
     {"gpio_get", l_gpio_get, "gpio_get(pin) - Returns state of safe pin (0 or 1)."},
+    {"telegram_send", l_telegram_send, "telegram_send(\"msg\") - Sends a message via Telegram bot."},
     {"txCan", l_txCan, "txCan(bus, id, isExt, payload) - Transmit CAN frame (rusEFI)."},
     {"canRxAdd", l_canRxAdd, "canRxAdd([bus], id) - Subscribe Lua to CAN ID (rusEFI)."},
     {"setTickRate", l_setTickRate, "setTickRate(hz) - Set background tick rate (rusEFI)."},
@@ -431,7 +440,8 @@ esp_err_t lua_manager_execute(const char *script) {
             
             char err_msg[256];
             snprintf(err_msg, sizeof(err_msg), "Error: %s", err);
-            ui_Screen6_set_lua_terminal_text(err_msg);
+            extern void ui_Screen6_set_lua_text(const char *text);
+            ui_Screen6_set_lua_text(err_msg);
             
             lua_pop(L, 1);
             xSemaphoreGive(lua_mutex);

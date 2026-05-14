@@ -66,7 +66,7 @@ void ui_init(void) {
   ui_Screen4_screen_init(); // Add Screen4 initialization
   ui_Screen5_screen_init(); // Add Screen5 initialization
   ui_Screen6_screen_init(); // Add Screen6 initialization
-  // ui_Screen7_screen_init(); // DISABLED: Snake game causes watchdog
+  // Screen 7 is lazy-initialized on first switch to save LVGL heap memory
   // ui_Screen8_screen_init(); // Disabled: Causes watchdog timeout in LVGL mask
   // drawing
 

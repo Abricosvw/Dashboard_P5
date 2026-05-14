@@ -22,7 +22,7 @@ esp_err_t wifi_storage_save(const char *ssid, const char *password) {
     return err;
 
   // 1. Check if already exists, or find empty slot
-  int count = 0;
+  int32_t count = 0;
   nvs_get_i32(handle, "count", &count);
 
   int existing_idx = -1;
@@ -70,7 +70,7 @@ esp_err_t wifi_storage_get_all(wifi_cred_t *networks, int *count) {
     return (err == ESP_ERR_NVS_NOT_FOUND) ? ESP_OK : err;
   }
 
-  int c = 0;
+  int32_t c = 0;
   nvs_get_i32(handle, "count", &c);
   *count = 0;
 

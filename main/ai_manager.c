@@ -7,12 +7,13 @@
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_mac.h"
+#include "esp_sntp.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
-#include "esp_sntp.h"
 #include "freertos/task.h"
 #include "lvgl.h"
 #include "mbedtls/base64.h"
+#include "ui/screens/ui_Screen7.h"
 #include <inttypes.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -31,12 +32,12 @@
 // Manual declarations to resolve header conflicts
 bool example_lvgl_lock(int timeout_ms);
 void example_lvgl_unlock(void);
-extern void ui_Screen6_set_ai_info(const char *text);
+extern void ui_Screen7_set_status(const char *text);
 extern void ui_Screen6_reset_ai_button(void); // New helper
 
 static const char *TAG = "AI_MGR_GEMINI";
 
-static bool s_voice_activation_enabled = false;
+static bool s_voice_activation_enabled = true;
 static volatile bool s_wake_word_paused = false;
 static TaskHandle_t s_wake_task_handle = NULL;
 static volatile bool s_manual_trigger_requested = false;
@@ -47,17 +48,30 @@ static void process_ai_interaction(void); // Internal helper
 
 // System prompt for Gemini - provides context about the device
 static const char *SYSTEM_PROMPT =
-    "Ты голосовой ассистент для автомобильной приборной панели ECU Dashboard "
-    "на ESP32-P4. "
-    "Ты можешь управлять устройством голосовыми командами. Отвечай кратко на "
-    "русском языке. "
-    "Доступные экраны: 1-Главный (MAP,RPM,Boost), 2-Датчики (масло,вода), "
-    "3-CAN терминал, "
-    "4-Дополнительные датчики, 5-Крутящий момент, 6-Настройки. "
-    "Ты также можешь писать скрипты на Lua (ESP-Claw Terminal) "
-    "для управления поведением машины, если пользователь просит создать правило. "
-    "Когда пользователь просит выполнить действие, используй соответствующую "
-    "функцию.";
+    "Ты встроенный ИИ автомобильной панели 'ESP Claw' (также называется "
+    "'ECU Dashboard P5'). Аппаратная платформа: ESP32-P4. "
+    "Ты и есть ESP Claw — это твоё имя и название устройства. "
+    "Ты управляешь САМИМ дашбордом: экранами, кнопками, настройками, Lua-скриптами. "
+    "У тебя есть прямой доступ к CAN-шине автомобиля для чтения данных ECU (обороты, "
+    "температура, наддув и т.д.). Внешняя среда (двигатель, ECU) подключена к тебе через CAN bus. "
+    "Отвечай кратко на русском языке. "
+    "ВАЖНО: У тебя ДВА терминала: 1) CAN-терминал (Экран 3) — для просмотра CAN-данных, "
+    "кнопки: sniffer, clear, record. 2) Lua-терминал (Экран 6) — для скриптов, "
+    "кнопки: run_lua, save_lua, clear_lua (очистить текст скрипта). "
+    "Доступные экраны: 1-Главный, 2-Датчики, 3-CAN терминал, 4-Доп датчики, "
+    "5-Момент, 6-Настройки и Lua терминал. "
+    "Если пользователь спрашивает текущие параметры (обороты, температуру, "
+    "наддув и т.д.), ОБЯЗАТЕЛЬНО используй функцию get_ecu_data(). "
+    "Не генерируй Lua для простых ответов на вопросы. "
+    "Если пользователь просит ОТПРАВИТЬ СООБЩЕНИЕ в Telegram, используй функцию "
+    "send_telegram(message). НЕ генерируй Lua скрипт для отправки в Telegram! "
+    "Если пользователь просит СОЗДАТЬ ПРАВИЛО, АВТОМАТИЗАЦИЮ или скрипт, "
+    "используй generate_lua_rule(lua_code, auto_execute=true). "
+    "Если пользователь просит нажать кнопку в интерфейсе (Help, Telegram, GPIO Map, "
+    "WiFi, Voice AI и т.д.), используй функцию click_ui_button(button_name). "
+    "Если просят очистить/удалить скрипт в терминале — используй click_ui_button('clear_lua'). "
+    "Ты можешь управлять: экранами, яркостью, датчиками, демо-режимом, "
+    "CAN-сниффером, записью логов, Lua-скриптами, настройками и всеми кнопками UI.";
 
 // Function declarations for Gemini Function Calling
 static const char *FUNCTION_DECLARATIONS =
@@ -130,21 +144,57 @@ static const char *FUNCTION_DECLARATIONS =
     "  \"description\": \"Сохранить текущие настройки на SD карту\","
     "  \"parameters\": {\"type\": \"object\", \"properties\": {}}"
     "},{"
+    "  \"name\": \"get_ecu_data\","
+    "  \"description\": \"Получить текущие данные двигателя из CAN-шины "
+    "(обороты, температура, наддув, батарея)\","
+    "  \"parameters\": {\"type\": \"object\", \"properties\": {}}"
+    "},{"
     "  \"name\": \"generate_lua_rule\","
-    "  \"description\": \"Сгенерировать Lua скрипт. Доступные функции: get_rpm(), get_engine_temp(), set_fan_speed(speed), show_warning(msg), log(msg), start_can_log(), stop_can_log(), switch_screen(1-8), click_btn_run(), click_btn_save(), click_btn_help(), set_gauge_visible(id, bool), gpio_set(pin, level), gpio_get(pin)\","
+    "  \"description\": \"Сгенерировать Lua скрипт. Функции: get_rpm(), "
+    "get_engine_temp(), set_fan_speed(speed), show_warning(msg), "
+    "telegram_send(msg), switch_screen(id), click_btn_help(), gpio_set(pin, "
+    "level)\","
     "  \"parameters\": {"
     "    \"type\": \"object\","
     "    \"properties\": {"
     "      \"lua_code\": {\"type\": \"string\", \"description\": \"Готовый код "
-    "на языке Lua\"}"
+    "на языке Lua\"},"
+    "      \"auto_execute\": {\"type\": \"boolean\", \"description\": "
+    "\"Запустить скрипт сразу после генерации (обычно true)\"}"
     "    },"
-    "    \"required\": [\"lua_code\"]"
+    "    \"required\": [\"lua_code\", \"auto_execute\"]"
+    "  }"
+    "},{"
+    "  \"name\": \"send_telegram\","
+    "  \"description\": \"Отправить текстовое сообщение в Telegram бот пользователю\","
+    "  \"parameters\": {"
+    "    \"type\": \"object\","
+    "    \"properties\": {"
+    "      \"message\": {\"type\": \"string\", \"description\": \"Текст сообщения для отправки в Telegram\"}"
+    "    },"
+    "    \"required\": [\"message\"]"
+    "  }"
+    "},{"
+    "  \"name\": \"click_ui_button\","
+    "  \"description\": \"Нажать кнопку в интерфейсе (управление экраном)\","
+    "  \"parameters\": {"
+    "    \"type\": \"object\","
+    "    \"properties\": {"
+    "      \"button_name\": {\"type\": \"string\", \"description\": \"Имя "
+    "кнопки: 'demo_mode', 'enable_screen3', 'nav_buttons', 'save_settings', "
+    "'reset_settings', 'intro_sound', 'wifi', 'voice_ai', 'ai', 'run_lua', "
+    "'save_lua', 'clear_lua', 'help', 'gpio', 'telegram', 'sniffer', 'clear', 'record'\"}"
+    "    },"
+    "    \"required\": [\"button_name\"]"
     "  }"
     "}]";
 
 static void update_ui_status(const char *text) {
   if (example_lvgl_lock(500)) {
-    ui_Screen6_set_ai_info(text);
+    ui_Screen7_set_status(text);
+    
+
+
     // If we transition back to Idle or Error, reset the trigger button color
     if (strstr(text, "Idle") || strstr(text, "Error") || strstr(text, "say:")) {
       ui_Screen6_reset_ai_button();
@@ -156,9 +206,10 @@ static void update_ui_status(const char *text) {
 // Function to list available models for this API key
 static void list_available_models(void *pvParameters) {
   ESP_LOGI(TAG, "Waiting for network & time sync before checking models...");
-  
+
   // Wait for time sync (indicates network is up and TLS can be verified)
-  extern void ai_start_after_time_sync(void *pvParameters); // Just using the SNTP check logic
+  extern void ai_start_after_time_sync(
+      void *pvParameters); // Just using the SNTP check logic
   int retry = 0;
   while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && ++retry < 30) {
     vTaskDelay(pdMS_TO_TICKS(1000));
@@ -261,7 +312,8 @@ static esp_afe_sr_data_t *s_afe_data = NULL;
 static void ai_fetch_task(void *pvParameters) {
   ESP_LOGI(TAG, "AFE Fetch Task Started");
   while (1) {
-    if (s_wake_word_paused || !s_voice_activation_enabled || !s_afe_data || !s_afe_handle) {
+    if (s_wake_word_paused || !s_voice_activation_enabled || !s_afe_data ||
+        !s_afe_handle) {
       vTaskDelay(pdMS_TO_TICKS(100));
       continue;
     }
@@ -290,7 +342,8 @@ static void ai_wake_word_task(void *pvParameters) {
     vTaskDelete(NULL);
     return;
   }
-  ESP_LOGI(TAG, "SR Models initialized successfully. Found %d models.", models->num);
+  ESP_LOGI(TAG, "SR Models initialized successfully. Found %d models.",
+           models->num);
 
   // 1. Initialize AFE (Acoustic Front-End)
   s_afe_handle = &esp_afe_sr_v1;
@@ -300,10 +353,11 @@ static void ai_wake_word_task(void *pvParameters) {
   afe_config.se_init = true; // Enable Speech Enhancement
   afe_config.vad_init = true;
   afe_config.voice_communication_init = false;
-  afe_config.afe_linear_gain = 3.0; // Boost sensitivity
+  afe_config.afe_linear_gain = 3.0;       // Boost sensitivity
   afe_config.pcm_config.total_ch_num = 2; // Total MUST be mic_num + ref_num
   afe_config.pcm_config.mic_num = 1;      // Mic on Ch0
   afe_config.pcm_config.ref_num = 1;      // Ref on Ch1 (we will zero it out)
+  afe_config.wakenet_mode = DET_MODE_90;  // Force 1CH wake word mode
 
 #if CONFIG_SR_WN_WN9_HILEXIN
   afe_config.wakenet_model_name = "wn9_hilexin";
@@ -317,12 +371,14 @@ static void ai_wake_word_task(void *pvParameters) {
 
   s_afe_data = s_afe_handle->create_from_config(&afe_config);
   if (!s_afe_data) {
-    ESP_LOGE(TAG, "Failed to create AFE data (check wake word models in sdkconfig)");
+    ESP_LOGE(TAG,
+             "Failed to create AFE data (check wake word models in sdkconfig)");
     vTaskDelete(NULL);
     return;
   }
   ESP_LOGI(TAG, "AFE created successfully with model: %s",
-           afe_config.wakenet_model_name ? afe_config.wakenet_model_name : "NULL");
+           afe_config.wakenet_model_name ? afe_config.wakenet_model_name
+                                         : "NULL");
 
   i2s_chan_handle_t rx_handle = audio_get_rx_handle();
   if (!rx_handle) {
@@ -335,8 +391,10 @@ static void ai_wake_word_task(void *pvParameters) {
   int n_ch_afe = 2;
   int n_ch_i2s = 2;
 
-  int16_t *i2s_stereo_buffer = malloc(audio_chunksize * sizeof(int16_t) * n_ch_i2s);
-  int16_t *afe_feed_buffer = malloc(audio_chunksize * sizeof(int16_t) * n_ch_afe);
+  int16_t *i2s_stereo_buffer =
+      malloc(audio_chunksize * sizeof(int16_t) * n_ch_i2s);
+  int16_t *afe_feed_buffer =
+      malloc(audio_chunksize * sizeof(int16_t) * n_ch_afe);
 
   if (!i2s_stereo_buffer || !afe_feed_buffer) {
     ESP_LOGE(TAG, "Failed to allocate WWD buffers");
@@ -347,7 +405,8 @@ static void ai_wake_word_task(void *pvParameters) {
   }
 
   // Start fetch task
-  xTaskCreatePinnedToCore(ai_fetch_task, "ai_fetch_task", 8192, NULL, 5, NULL, 1);
+  xTaskCreatePinnedToCore(ai_fetch_task, "ai_fetch_task", 8192, NULL, 5, NULL,
+                          1);
 
   ESP_LOGI(TAG, "Wake word feed task entering loop...");
   while (1) {
@@ -366,11 +425,13 @@ static void ai_wake_word_task(void *pvParameters) {
     }
 
     size_t bytes_read = 0;
-    int timeout_ms = (s_wake_word_paused || !s_voice_activation_enabled) ? 20 : 200;
+    int timeout_ms =
+        (s_wake_word_paused || !s_voice_activation_enabled) ? 20 : 200;
 
-    esp_err_t ret = i2s_channel_read(rx_handle, i2s_stereo_buffer,
-                                     audio_chunksize * sizeof(int16_t) * n_ch_i2s,
-                                     &bytes_read, pdMS_TO_TICKS(timeout_ms));
+    esp_err_t ret =
+        i2s_channel_read(rx_handle, i2s_stereo_buffer,
+                         audio_chunksize * sizeof(int16_t) * n_ch_i2s,
+                         &bytes_read, pdMS_TO_TICKS(timeout_ms));
 
     if (s_manual_trigger_requested)
       continue;
@@ -430,31 +491,72 @@ static void handle_gemini_response(const char *json_str) {
           char *args_str = fn_args ? cJSON_PrintUnformatted(fn_args) : NULL;
 
           // Special case for generating Lua code
-          if (strcmp(fn_name->valuestring, "generate_lua_rule") == 0 && fn_args) {
+          if (strcmp(fn_name->valuestring, "generate_lua_rule") == 0 &&
+              fn_args) {
             cJSON *lua_code = cJSON_GetObjectItem(fn_args, "lua_code");
+            cJSON *auto_exec = cJSON_GetObjectItem(fn_args, "auto_execute");
+            bool should_execute = (auto_exec && cJSON_IsTrue(auto_exec));
+
             if (lua_code && cJSON_IsString(lua_code)) {
-                extern void ui_Screen6_set_lua_terminal_text(const char *text);
-                if (example_lvgl_lock(500)) {
-                    ui_Screen6_set_lua_terminal_text(lua_code->valuestring);
-                    example_lvgl_unlock();
-                }
-                update_ui_status("✅ Код сгенерирован и добавлен в Терминал");
-                speak_response("Код сгенерирован в терминале");
+              extern void ui_Screen6_set_lua_text(const char *text);
+              extern esp_err_t lua_manager_execute(const char *script);
+
+              if (example_lvgl_lock(500)) {
+                ui_Screen6_set_lua_text(lua_code->valuestring);
+                example_lvgl_unlock();
+              }
+
+              if (should_execute) {
+                lua_manager_execute(lua_code->valuestring);
+                update_ui_status("✅ Код сгенерирован и ВЫПОЛНЕН");
+                speak_response("Код сгенерирован и запущен.");
+              } else {
+                update_ui_status("✅ Код добавлен в Lua Editor");
+                speak_response("Код сгенерирован в редакторе скриптов.");
+              }
+            }
+          } else if (strcmp(fn_name->valuestring, "send_telegram") == 0 &&
+                     fn_args) {
+            // Direct Telegram message sending (no Lua!)
+            cJSON *msg_json = cJSON_GetObjectItem(fn_args, "message");
+            if (msg_json && cJSON_IsString(msg_json) && 
+                msg_json->valuestring[0]) {
+              extern void telegram_send_message(const char *msg);
+              telegram_send_message(msg_json->valuestring);
+              
+              // Show in AI terminal
+              if (example_lvgl_lock(500)) {
+                extern void ui_Screen7_append_text(const char *text);
+                char tg_line[512];
+                snprintf(tg_line, sizeof(tg_line), "[TG ←] %s", 
+                         msg_json->valuestring);
+                ui_Screen7_append_text(tg_line);
+                example_lvgl_unlock();
+              }
+              
+              update_ui_status("✅ Сообщение отправлено в Telegram");
+              speak_response("Сообщение отправлено в Телеграм.");
             }
           } else {
-              // Execute the normal UI function
-              ai_cmd_result_t result =
-                  ai_execute_function_call(fn_name->valuestring, args_str);
+            // Execute the normal UI function
+            ai_cmd_result_t result =
+                ai_execute_function_call(fn_name->valuestring, args_str);
 
-              // Show result to user
-              char status_buf[512];
-              snprintf(status_buf, sizeof(status_buf), "%s\n\n%s",
-                       result.success ? "✅ Команда выполнена:" : "❌ Ошибка:",
-                       result.message);
-              update_ui_status(status_buf);
+            // Show result to user
+            char status_buf[512];
+            snprintf(status_buf, sizeof(status_buf), "%s\n\n%s",
+                     result.success ? "✅ Команда выполнена:" : "❌ Ошибка:",
+                     result.message);
+            update_ui_status(status_buf);
 
-              // Speak the result
-              speak_response(result.message);
+            // Also append to Screen 7 terminal if locked
+            if (example_lvgl_lock(500)) {
+              ui_Screen7_append_text(result.message);
+              example_lvgl_unlock();
+            }
+
+            // Speak the result
+            speak_response(result.message);
           }
 
           if (args_str)
@@ -474,6 +576,12 @@ static void handle_gemini_response(const char *json_str) {
         snprintf(status_buf, sizeof(status_buf), "AI Response:\n%s",
                  text->valuestring);
         update_ui_status(status_buf);
+
+        // Also append to Screen 7 terminal if locked
+        if (example_lvgl_lock(500)) {
+          ui_Screen7_append_text(text->valuestring);
+          example_lvgl_unlock();
+        }
 
         // Speak the response (TTS placeholder)
         speak_response(text->valuestring);
@@ -504,11 +612,14 @@ static void handle_gemini_response(const char *json_str) {
   cJSON_Delete(root);
 }
 
-// Speak the response using TTS (save as WAV and play)
 static void speak_response(const char *text) {
   // For now, just play a confirmation sound
   // TODO: Integrate Google TTS API to convert text to speech
   ESP_LOGI(TAG, "TTS would say: %s", text);
+
+  // Send response back to Telegram so the user can read it!
+  extern void telegram_send_message(const char *msg);
+  telegram_send_message(text);
 
   // Play a simple notification sound if available
   // audio_play_tone(880, 200);  // Simple beep for now
@@ -517,8 +628,9 @@ static void speak_response(const char *text) {
 static void ai_text_query_task(void *pvParameters) {
   char *query_text = (char *)pvParameters;
   ESP_LOGI(TAG, "Gemini Text Query Starting: %s", query_text);
-  
-  update_ui_status("🌐 Подключаюсь к серверу...\n\nОтправка текстового запроса");
+
+  update_ui_status(
+      "🌐 Подключаюсь к серверу...\n\nОтправка текстового запроса");
 
   cJSON *root = cJSON_CreateObject();
 
@@ -554,7 +666,7 @@ static void ai_text_query_task(void *pvParameters) {
   // Prepare HTTP client
   char url[256];
   snprintf(url, sizeof(url), "%s?key=%s", GEMINI_API_ENDPOINT, GEMINI_API_KEY);
-  
+
   esp_http_client_config_t http_cfg = {
       .url = url,
       .crt_bundle_attach = esp_crt_bundle_attach,
@@ -570,7 +682,8 @@ static void ai_text_query_task(void *pvParameters) {
   int retries = 3;
   while (retries-- > 0) {
     err = esp_http_client_open(client, strlen(post_data));
-    if (err == ESP_OK) break;
+    if (err == ESP_OK)
+      break;
     vTaskDelay(pdMS_TO_TICKS(2000));
     esp_http_client_cleanup(client);
     client = esp_http_client_init(&http_cfg);
@@ -597,16 +710,18 @@ static void ai_text_query_task(void *pvParameters) {
   }
 
   update_ui_status("⏳ Жду ответ...\n\nСервер обрабатывает запрос");
-  int content_length = esp_http_client_fetch_headers(client);
+  esp_http_client_fetch_headers(client);
   int status_code = esp_http_client_get_status_code(client);
 
   char *res_buf = malloc(8192);
   if (res_buf) {
     int total_read = 0;
     int read_len;
-    while ((read_len = esp_http_client_read(client, res_buf + total_read, 8191 - total_read)) > 0) {
+    while ((read_len = esp_http_client_read(client, res_buf + total_read,
+                                            8191 - total_read)) > 0) {
       total_read += read_len;
-      if (total_read >= 8191) break;
+      if (total_read >= 8191)
+        break;
     }
     res_buf[total_read] = 0;
 
@@ -614,11 +729,13 @@ static void ai_text_query_task(void *pvParameters) {
       handle_gemini_response(res_buf);
     } else if (total_read > 0) {
       char status_err[128];
-      snprintf(status_err, sizeof(status_err), "❌ Ошибка HTTP %d\n\nСм. логи", status_code);
+      snprintf(status_err, sizeof(status_err), "❌ Ошибка HTTP %d\n\nСм. логи",
+               status_code);
       update_ui_status(status_err);
     } else {
       char status_err[64];
-      snprintf(status_err, sizeof(status_err), "❌ Ошибка HTTP %d\n\nПустой ответ", status_code);
+      snprintf(status_err, sizeof(status_err),
+               "❌ Ошибка HTTP %d\n\nПустой ответ", status_code);
       update_ui_status(status_err);
     }
     free(res_buf);
@@ -632,7 +749,8 @@ static void ai_text_query_task(void *pvParameters) {
 }
 
 void ai_manager_send_text_query(const char *text) {
-  if (!text || strlen(text) == 0) return;
+  if (!text || strlen(text) == 0)
+    return;
   char *query_copy = strdup(text);
   if (query_copy) {
     xTaskCreate(ai_text_query_task, "ai_text_query", 8192, query_copy, 5, NULL);
@@ -779,12 +897,14 @@ static void process_ai_interaction(void) {
   esp_err_t err = ESP_FAIL;
   int retries = 3;
   while (retries-- > 0) {
-    ESP_LOGI(TAG, "Attempting to connect to Gemini API... (retries left: %d)", retries);
+    ESP_LOGI(TAG, "Attempting to connect to Gemini API... (retries left: %d)",
+             retries);
     err = esp_http_client_open(client, strlen(post_data));
     if (err == ESP_OK) {
       break;
     }
-    ESP_LOGW(TAG, "Connection failed: %s. Retrying in 2s...", esp_err_to_name(err));
+    ESP_LOGW(TAG, "Connection failed: %s. Retrying in 2s...",
+             esp_err_to_name(err));
     vTaskDelay(pdMS_TO_TICKS(2000));
     // Must cleanup and re-init client for a clean retry state
     esp_http_client_cleanup(client);
@@ -793,7 +913,8 @@ static void process_ai_interaction(void) {
   }
 
   if (err != ESP_OK) {
-    ESP_LOGE(TAG, "Failed to open HTTP connection after retries: %s", esp_err_to_name(err));
+    ESP_LOGE(TAG, "Failed to open HTTP connection after retries: %s",
+             esp_err_to_name(err));
     update_ui_status("❌ Ошибка сети\n\nНе удалось подключиться");
     free(post_data);
     esp_http_client_cleanup(client);

@@ -8,6 +8,7 @@
 #include "screens/ui_Screen4.h"
 #include "screens/ui_Screen5.h"
 #include "screens/ui_Screen6.h"
+#include "screens/ui_Screen7.h"
 
 #include "settings_config.h"
 #include "ui.h"
@@ -201,8 +202,8 @@ static bool ui_is_screen_enabled(screen_id_t screen_id) {
     // Settings always enabled
     return true;
   case SCREEN_7:
-    // Game screen - DISABLED
-    return false;
+    // Open Claw AI Terminal - ENABLED
+    return true;
   case SCREEN_8:
     // Lux Dashboard - DISABLED
     return false;
@@ -218,7 +219,8 @@ static bool ui_is_screen_enabled(screen_id_t screen_id) {
 screen_id_t ui_get_next_enabled_screen(screen_id_t current_screen,
                                        bool forward) {
   screen_id_t screens[] = {SCREEN_1, SCREEN_2, SCREEN_3,
-                           SCREEN_4, SCREEN_5, SCREEN_6};
+                           SCREEN_4, SCREEN_5, SCREEN_6,
+                           SCREEN_7};
   int num_screens = sizeof(screens) / sizeof(screens[0]);
   int current_index = -1;
 
@@ -393,6 +395,17 @@ void ui_switch_to_screen(screen_id_t screen_id) {
     lv_scr_load_anim(ui_Screen6, anim_type, anim_time, 0, false);
     current_screen = SCREEN_6;
     ESP_LOGI("SCREEN_MANAGER", "Switched to SCREEN_6");
+    break;
+
+  case SCREEN_7:
+    // Lazy init: create Screen 7 on first use to save LVGL heap at boot
+    if (ui_Screen7 == NULL) {
+      ESP_LOGI("SCREEN_MANAGER", "Lazy-initializing Screen 7...");
+      ui_Screen7_screen_init();
+    }
+    lv_scr_load_anim(ui_Screen7, anim_type, anim_time, 0, false);
+    current_screen = SCREEN_7;
+    ESP_LOGI("SCREEN_MANAGER", "Switched to SCREEN_7 (Open Claw)");
     break;
 
   default:
