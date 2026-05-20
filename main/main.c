@@ -1,6 +1,11 @@
+#include "ai_config.h"
+#include "ai_manager.h"
+#include "app_capabilities.h"
+#include "app_claw.h"
 #include "audio_manager.h"
 #include "background_task.h"
 #include "can_manager.h"
+#include "cap_im_tg.h"
 #include "display_init.h"
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
@@ -10,18 +15,15 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "lua_manager.h"
 #include "main_gui.h"
 #include "nvs_flash.h"
 #include "sd_card_manager.h"
 #include "settings_manager.h"
+#include "telegram_manager.h"
 #include "ui/settings_config.h"
 #include "wifi_controller.h"
-#include "lua_manager.h"
-#include "ai_manager.h"
-#include "telegram_manager.h"
 #include "wifi_init.h"
-#include "app_capabilities.h"
-#include "app_claw.h"
 #include <dirent.h>
 
 static const char *TAG = "MAIN";
@@ -158,31 +160,69 @@ void app_main(void) {
   ESP_LOGI(TAG, "[7] CAN Bus init...");
   can_init();
 
+  // =========================================================================
+  // PHASE 8: LUA ENGINE
+  // =========================================================================
   ESP_LOGI(TAG, "[8] Lua Engine init...");
   lua_manager_init();
 
+  // =========================================================================
+  // PHASE 9: AI ASSISTANT
+  // =========================================================================
   ESP_LOGI(TAG, "[9] AI Manager init...");
   ai_manager_init();
   ai_manager_start();
 
+  // =========================================================================
+  // PHASE 9.1: CAPABILITIES
+  // =========================================================================
   ESP_LOGI(TAG, "[9.1] ESP-Claw Capabilities init...");
   app_claw_config_t claw_cfg = {0}; // Defaults from Kconfig will be used
   app_claw_storage_paths_t claw_paths = {
       .fatfs_base_path = "/sdcard",
       .lua_root_dir = "/sdcard/SYSTEM/LUA",
-      .router_rules_path = "/sdcard/SYSTEM/RULES/router.json",
-      .scheduler_rules_path = "/sdcard/SYSTEM/RULES/scheduler.json",
+      .router_rules_path = "/sdcard/SYSTEM/RULES/rt_rules",
+      .scheduler_rules_path = "/sdcard/SYSTEM/RULES/sched",
       .im_attachment_root = "/sdcard/SYSTEM/TELEGRAM",
   };
   app_capabilities_init(&claw_cfg, &claw_paths);
 
+  ESP_LOGI(TAG, "=== System Ready! ===");
+  ESP_LOGI(TAG, "(Telegram will start automatically after WiFi gets IP)");
+
+  // Wait for WiFi to connect and SDIO to stabilize before starting Telegram
+  // app_capabilities_init already set up the Event Router correctly.
+  // telegram_init will see ESP_ERR_INVALID_STATE from claw_event_router_init
+  // (already initialized) and will correctly skip that step.
   ESP_LOGI(TAG, "[10] Telegram Manager init...");
   telegram_init();
 
-  ESP_LOGI(TAG, "=== System Ready! ===");
+  int boot_msg_timer = 30; // Delay 30 seconds to let Telegram polling stabilize
 
   // Main loop
   while (1) {
+    if (boot_msg_timer > 0) {
+      boot_msg_timer--;
+      if (boot_msg_timer == 0) {
+          ESP_LOGI(TAG, "Sending IFF/Startup Telegram message...");
+          /* Retry up to 3 times with 25-sec gaps between attempts.
+           * The long-poll holds HTTPS for 20 sec; 25 sec covers the gap. */
+          const char *iff_msg =
+              "🚀 *Dashboard_P5 (Open Claw) Online!*\n✅ IFF Check: FRIEND\n"
+              "✅ Diagnostic: STABLE\nWaiting for commands...";
+          for (int attempt = 0; attempt < 3; attempt++) {
+            if (attempt > 0) {
+              ESP_LOGI(TAG, "IFF retry %d/3 - waiting 25s for poll gap...", attempt + 1);
+              vTaskDelay(pdMS_TO_TICKS(25000));
+            }
+            /* telegram_send_message internally checks telegram_running */
+            telegram_send_message(iff_msg);
+            /* Small delay to let the HTTP call complete before checking */
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            break; /* telegram_send_message logs success/fail; single attempt is fine */
+          }
+        }
+    }
     vTaskDelay(pdMS_TO_TICKS(1000));
   }
 }

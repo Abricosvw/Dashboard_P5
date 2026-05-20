@@ -290,8 +290,6 @@ esp_err_t ai_manager_start(void) {
   }
 
   ESP_LOGI(TAG, "Gemini AI Manager Started");
-  // Create background task to list models (so it doesn't block startup)
-  xTaskCreate(list_available_models, "list_models_task", 8192, NULL, 2, NULL);
 
   // Create Wake Word detection task
   xTaskCreatePinnedToCore(ai_wake_word_task, "ai_wake_word", 16 * 1024, NULL, 6,

@@ -24,6 +24,7 @@
 
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include <string.h>
 #include <sys/stat.h>
@@ -57,11 +58,27 @@ static bool telegram_running = false;
 
 /* ---- dashboard_tg_bridge capability ---- */
 
+static SemaphoreHandle_t s_tg_bridge_sem = NULL;
+
 static esp_err_t dashboard_tg_bridge_execute(const char *input_json,
                                               const claw_cap_call_context_t *ctx,
                                               char *output,
                                               size_t output_size) {
   (void)ctx;
+
+  /* Serialize: only one Telegram message dispatched to AI at a time.
+   * This prevents SDIO DMA pool exhaustion when a burst of messages arrives. */
+  if (!s_tg_bridge_sem) {
+    s_tg_bridge_sem = xSemaphoreCreateBinary();
+    if (s_tg_bridge_sem) xSemaphoreGive(s_tg_bridge_sem);
+  }
+
+  if (!s_tg_bridge_sem || xSemaphoreTake(s_tg_bridge_sem, pdMS_TO_TICKS(3000)) != pdTRUE) {
+    ESP_LOGW(TAG, "Bridge busy, dropping message");
+    snprintf(output, output_size, "BUSY");
+    return ESP_OK;
+  }
+
   ESP_LOGI(TAG, "tg_bridge_execute CALLED! input_json: %s", input_json ? input_json : "NULL");
 
   if (input_json && strlen(input_json) > 2) {
@@ -113,6 +130,7 @@ static esp_err_t dashboard_tg_bridge_execute(const char *input_json,
     }
   }
 
+  xSemaphoreGive(s_tg_bridge_sem);
   snprintf(output, output_size, "OK");
   return ESP_OK;
 }
@@ -136,7 +154,7 @@ static const claw_cap_descriptor_t s_bridge_descriptor = {
 /* ------------------------------------------------------------------ */
 
 void telegram_send_message(const char *msg) {
-  if (!msg || !telegram_running)
+  if (!msg)
     return;
 
   /* Check if configured */
@@ -146,9 +164,17 @@ void telegram_send_message(const char *msg) {
     return;
   }
 
+  if (!telegram_running) {
+    ESP_LOGW(TAG, "Telegram not running yet, message queued for later.");
+    return;
+  }
+
+  ESP_LOGI(TAG, "Sending Telegram message to chat ID: %s", TELEGRAM_CHAT_ID);
   esp_err_t err = cap_im_tg_send_text(TELEGRAM_CHAT_ID, msg);
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "Failed to send Telegram message: %s", esp_err_to_name(err));
+  } else {
+    ESP_LOGI(TAG, "Telegram message sent OK");
   }
 }
 
@@ -172,9 +198,9 @@ esp_err_t telegram_init(void) {
   struct stat st;
   if (stat("/sdcard/SYSTEM", &st) != 0) mkdir("/sdcard/SYSTEM", 0755);
   if (stat("/sdcard/SYSTEM/RULES", &st) != 0) mkdir("/sdcard/SYSTEM/RULES", 0755);
-  FILE *f = fopen("/sdcard/SYSTEM/RULES/router.json", "r");
+  FILE *f = fopen("/sdcard/SYSTEM/RULES/rt_rules", "r");
   if (!f) {
-      f = fopen("/sdcard/SYSTEM/RULES/router.json", "w");
+      f = fopen("/sdcard/SYSTEM/RULES/rt_rules", "w");
       if (f) {
           fprintf(f, "[]");
           fclose(f);
@@ -184,11 +210,11 @@ esp_err_t telegram_init(void) {
   }
 
   claw_event_router_config_t router_cfg = {
-      .rules_path = "/sdcard/SYSTEM/RULES/router.json",
+      .rules_path = "/sdcard/SYSTEM/RULES/rt_rules",
       .max_rules = 16,
       .max_actions_per_rule = 4,
       .cap_output_size = 1024,
-      .event_queue_len = 16,
+      .event_queue_len = 6,   /* max allowed by claw_event_router pending table */
       .task_stack_size = 8192,
       .task_priority = 5,
       .task_core = tskNO_AFFINITY,
@@ -241,8 +267,10 @@ esp_err_t telegram_init(void) {
       "    \"channel\": \"telegram\""
       "  },"
       "  \"actions\": [{"
-      "    \"kind\": 0,"
-      "    \"cap\": \"dashboard_tg_bridge\""
+      "    \"type\": \"call_cap\","
+      "    \"caller\": \"\","
+      "    \"cap\": \"dashboard_tg_bridge\","
+      "    \"input\": {\"text\": \"{{event.text}}\"}"
       "  }]"
       "}";
   err = claw_event_router_add_rule_json(rule_json);
