@@ -21,11 +21,11 @@ static lv_obj_t *pwd_ta = NULL;
 static char selected_ssid[33] = {0};
 static wifi_scan_result_t scan_results[40]; // Move to static to save stack
 static bool is_scanning = false;
-static uint8_t current_kb_lang = 0; // 0=EN, 1=RU
+uint8_t current_kb_lang = 0; // 0=EN, 1=RU
 
 // Control maps define button widths (lower 4 bits = width ratio)
 // Russian keyboard: Row1=13 btns, Row2=11 btns, Row3=12 btns, Row4=5 btns
-static const lv_btnmatrix_ctrl_t kb_ctrl_ru[] = {
+const lv_btnmatrix_ctrl_t kb_ctrl_ru[] = {
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, // Row 1: 12 chars + backspace(wider)
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2,       // Row 2: 10 chars + enter(wider)
     2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, // Row 3: Shift(wider) + 9 chars + Enter
@@ -34,7 +34,7 @@ static const lv_btnmatrix_ctrl_t kb_ctrl_ru[] = {
 
 // English keyboard control map: Row1=11 btns, Row2=10 btns, Row3=12 btns,
 // Row4=5 btns
-static const lv_btnmatrix_ctrl_t kb_ctrl_en[] = {
+const lv_btnmatrix_ctrl_t kb_ctrl_en[] = {
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2,    // Row 1: 10 chars + backspace(wider)
     1, 1, 1, 1, 1, 1, 1, 1, 1, 2,       // Row 2: 9 chars + enter(wider)
     2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // Row 3: Shift(wider) + 11 chars
@@ -42,7 +42,7 @@ static const lv_btnmatrix_ctrl_t kb_ctrl_en[] = {
 };
 
 // Russian Cyrillic keyboard map (ЙЦУКЕН layout) - lowercase
-static const char *kb_map_ru[] = {
+const char *kb_map_ru[] = {
     "й", "ц",     "у",  "к",    "е",   "н", "г",     "ш",  "щ",
     "з", "х",     "ъ",  "Back", "\n",  "ф", "ы",     "в",  "а",
     "п", "р",     "о",  "л",    "д",   "ж", "э",     "\n", "Shift",
@@ -50,7 +50,7 @@ static const char *kb_map_ru[] = {
     ".", "Enter", "\n", "EN",   "123", "<", "Space", ">",  ""};
 
 // Russian Cyrillic keyboard map - uppercase
-static const char *kb_map_ru_uc[] = {
+const char *kb_map_ru_uc[] = {
     "Й", "Ц",     "У",  "К",    "Е",   "Н", "Г",     "Ш",  "Щ",
     "З", "Х",     "Ъ",  "Back", "\n",  "Ф", "Ы",     "В",  "А",
     "П", "Р",     "О",  "Л",    "Д",   "Ж", "Э",     "\n", "Shift",
@@ -58,25 +58,25 @@ static const char *kb_map_ru_uc[] = {
     ".", "Enter", "\n", "EN",   "123", "<", "Space", ">",  ""};
 
 // English QWERTY keyboard map - lowercase
-static const char *kb_map_en[] = {
+const char *kb_map_en[] = {
     "q",  "w",     "e",  "r",  "t",   "y", "u",     "i", "o", "p", "Back",
     "\n", "a",     "s",  "d",  "f",   "g", "h",     "j", "k", "l", "Enter",
     "\n", "Shift", "z",  "x",  "c",   "v", "b",     "n", "m", ".", ",",
     "?",  "!",     "\n", "RU", "123", "<", "Space", ">", ""};
 
 // English QWERTY keyboard map - uppercase
-static const char *kb_map_en_uc[] = {
+const char *kb_map_en_uc[] = {
     "Q",  "W",     "E",  "R",  "T",   "Y", "U",     "I", "O", "P", "Back",
     "\n", "A",     "S",  "D",  "F",   "G", "H",     "J", "K", "L", "Enter",
     "\n", "Shift", "Z",  "X",  "C",   "V", "B",     "N", "M", ".", ",",
     "?",  "!",     "\n", "RU", "123", "<", "Space", ">", ""};
 
 // Custom numeric map for WiFi password entry
-static const char *kb_map_num[] = {"1",  "2",   "3",  "Back",  "\n", "4", "5",
+const char *kb_map_num[] = {"1",  "2",   "3",  "Back",  "\n", "4", "5",
                                    "6",  ".",   "\n", "7",     "8",  "9", "+/-",
                                    "\n", "ABC", "0",  "Enter", ""};
 
-static const lv_btnmatrix_ctrl_t kb_ctrl_num[] = {
+const lv_btnmatrix_ctrl_t kb_ctrl_num[] = {
     1, 1, 1, 2, // Row 1
     1, 1, 1, 2, // Row 2
     1, 1, 1, 2, // Row 3
@@ -85,7 +85,7 @@ static const lv_btnmatrix_ctrl_t kb_ctrl_num[] = {
 
 // Keyboard value changed callback - handles EN/RU, 123, and manual control
 // buttons
-static void kb_value_cb(lv_event_t *e) {
+void kb_value_cb(lv_event_t *e) {
   lv_obj_t *keyboard = lv_event_get_target(e);
   uint16_t btn_id = lv_btnmatrix_get_selected_btn(keyboard);
   if (btn_id == LV_BTNMATRIX_BTN_NONE)

@@ -7,6 +7,7 @@
 #include "../ui.h"
 #include "ai_manager.h"
 #include "ui_screen_manager.h"
+#include "../ui_wifi_settings.h"
 #include <esp_log.h>
 #include <stdio.h>
 #include <string.h>
@@ -314,11 +315,21 @@ static void on_input_focused(lv_event_t *e) {
 
   if (!keyboard) {
     keyboard = lv_keyboard_create(ui_Screen7);
+    lv_obj_set_style_text_font(keyboard, &montserrat_20_en_ru, 0); // Apply EN/RU font
     lv_obj_set_size(keyboard, SCR_W, KEYBOARD_H);
     lv_obj_align(keyboard, LV_ALIGN_BOTTOM_LEFT, 0, -NAV_H);
     lv_keyboard_set_textarea(keyboard, ta);
     lv_obj_set_style_bg_color(keyboard, lv_color_hex(CLR_PANEL), 0);
     lv_obj_set_style_shadow_width(keyboard, 0, 0);
+
+    // Apply bilingual English layout by default with proper control map
+    lv_keyboard_set_map(keyboard, LV_KEYBOARD_MODE_TEXT_LOWER, kb_map_en, kb_ctrl_en);
+    lv_keyboard_set_map(keyboard, LV_KEYBOARD_MODE_TEXT_UPPER, kb_map_en_uc, kb_ctrl_en);
+    current_kb_lang = 0; // Default to English
+
+    // Add callback for custom layouts (RU/EN toggle, ABC, 123, manual buttons)
+    lv_obj_add_event_cb(keyboard, kb_value_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
     lv_obj_add_event_cb(keyboard, on_kb_ready, LV_EVENT_READY, NULL);
     lv_obj_add_event_cb(keyboard, on_kb_ready, LV_EVENT_CANCEL, NULL);
     keyboard_visible = true;
