@@ -12,6 +12,7 @@
  */
 
 #include "telegram_manager.h"
+#include "ai_commands.h"
 #include "ai_config.h"
 #include "ai_manager.h"
 #include "cJSON.h"
@@ -96,8 +97,78 @@ static esp_err_t dashboard_tg_bridge_execute(const char *input_json,
         extern bool example_lvgl_lock(int timeout_ms);
         extern void example_lvgl_unlock(void);
         
-        /* Check if this is a Lua code message: /lua <code> */
-        if (strncmp(msg, "/lua ", 5) == 0) {
+        /* Check if this is a native Telegram slash command */
+        bool processed = false;
+        
+        if (strcasecmp(msg, "/help") == 0 || strcasecmp(msg, "help") == 0) {
+            extern const char* lua_manager_get_help_text(void);
+            telegram_send_message(lua_manager_get_help_text());
+            
+            // Highlight button click in UI for visual synchronization
+            ai_cmd_click_ui_button("help");
+            processed = true;
+        } 
+        else if (strcasecmp(msg, "/gpio") == 0 || strcasecmp(msg, "gpio") == 0) {
+            const char *gpio_text = 
+                "⚡ *ESP32-P4 GPIO Map:*\n\n"
+                "• *GPIO 0-3:* JTAG / System (DO NOT USE)\n"
+                "• *FREE PINS:* 6, 22-32, 34-38, 45-52\n";
+            telegram_send_message(gpio_text);
+            
+            ai_cmd_click_ui_button("gpio");
+            processed = true;
+        } 
+        else if (strcasecmp(msg, "/tg") == 0 || strcasecmp(msg, "tg") == 0 || 
+                 strcasecmp(msg, "/telegram") == 0 || strcasecmp(msg, "telegram") == 0) {
+            const char *tg_text = 
+                "📲 *Telegram Messenger Setup & Commands:*\n\n"
+                "1. Configure `BOT_TOKEN` in `ai_config.h`\n"
+                "2. Configure `CHAT_ID` in `ai_config.h`\n"
+                "3. Send `/lua <code>` to load Lua scripts\n"
+                "4. Send text to ask AI questions\n\n"
+                "📌 *Available Commands:*\n"
+                "• `/help` - Show Lua scripting help\n"
+                "• `/gpio` - Show physical GPIO mapping\n"
+                "• `/tg` or `/telegram` - Show this Telegram guide\n"
+                "• `/status` - Get system running status\n"
+                "• `/ecu` - Fetch live vehicle ECU telemetry\n"
+                "• `/demo_on` / `/demo_off` - Toggle live demo simulator\n"
+                "• `/save` - Save current settings to SD card\n"
+                "• `/lua <code>` - Upload Lua script to editor";
+            telegram_send_message(tg_text);
+            
+            ai_cmd_click_ui_button("telegram");
+            processed = true;
+        }
+        else if (strcasecmp(msg, "/status") == 0 || strcasecmp(msg, "status") == 0) {
+            ai_cmd_result_t r = ai_cmd_get_status();
+            telegram_send_message(r.message);
+            processed = true;
+        }
+        else if (strcasecmp(msg, "/ecu") == 0 || strcasecmp(msg, "ecu") == 0) {
+            ai_cmd_result_t r = ai_cmd_get_ecu_data();
+            telegram_send_message(r.message);
+            processed = true;
+        }
+        else if (strcasecmp(msg, "/demo_on") == 0) {
+            ai_cmd_result_t r = ai_cmd_toggle_demo_mode(true);
+            telegram_send_message(r.message);
+            processed = true;
+        }
+        else if (strcasecmp(msg, "/demo_off") == 0) {
+            ai_cmd_result_t r = ai_cmd_toggle_demo_mode(false);
+            telegram_send_message(r.message);
+            processed = true;
+        }
+        else if (strcasecmp(msg, "/save") == 0) {
+            ai_cmd_result_t r = ai_cmd_save_settings();
+            telegram_send_message(r.message);
+            processed = true;
+        }
+
+        if (processed) {
+            // Already handled natively above
+        } else if (strncmp(msg, "/lua ", 5) == 0) {
           const char *lua_code = msg + 5;
           ESP_LOGI(TAG, "Telegram -> Lua Editor: %s", lua_code);
           

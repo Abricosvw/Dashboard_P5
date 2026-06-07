@@ -23,5 +23,7 @@ bool can_logger_is_recording(void);
 // Set a callback function to be called when recording stops automatically (e.g.
 // limit reached)
 void can_logger_set_stop_callback(void (*cb)(void));
+// Get human readable name for CAN ID
+const char *get_can_id_name(uint32_t id);
 
 #endif // CAN_LOGGER_H

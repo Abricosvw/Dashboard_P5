@@ -20,6 +20,7 @@ ai_cmd_result_t ai_cmd_get_status(void);
 ai_cmd_result_t ai_cmd_toggle_demo_mode(bool enable);
 ai_cmd_result_t ai_cmd_save_settings(void);
 ai_cmd_result_t ai_cmd_get_ecu_data(void);
+ai_cmd_result_t ai_cmd_click_ui_button(const char *button_name);
 
 // Execute command from Gemini function call
 ai_cmd_result_t ai_execute_function_call(const char *function_name,

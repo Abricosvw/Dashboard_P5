@@ -94,3 +94,24 @@ CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y
 # Dynamically allocates and frees network buffers to conserve memory
 CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
 ```
+
+---
+
+## 🔌 Hardware Configurations & Board Variants
+
+The firmware is designed to support multiple hardware board variants and display panels, configured via Kconfig:
+
+### 1. Board Selection (`BOARD_TYPE`)
+Defined in [Kconfig.projbuild](file:///c:/Users/11218/Dashboard_P5/main/Kconfig.projbuild).
+* **`BOARD_ESP32_P4_WIFI6_DEV_KIT`** (Variant 1: ESP32-P4-WIFI6-DEV-KIT):
+  * **Current Status:** **Active** (`CONFIG_BOARD_ESP32_P4_WIFI6_DEV_KIT=y`).
+  * Default GPIO assignments: I2C SDA = GPIO 7, I2C SCL = GPIO 8, LCD Reset = GPIO 33, Touch Reset = GPIO 5, Touch Interrupt = GPIO 4.
+* **`BOARD_ESP32_P4_PICO`** (Variant 2: ESP32-P4-Pico):
+  * Available for smaller form-factor integrations.
+
+### 2. Display Type (`BSP_LCD_TYPE`)
+Configured in the Board Support Package (BSP) `waveshare/esp32_p4_nano` dependencies:
+* **Active Screen:** `CONFIG_BSP_LCD_TYPE_720_1280_7_INCH_A=y` (Waveshare 7-inch DSI Touch display).
+* **Custom Driver Implementation:** The driver uses a custom initialization sequence in [board_init.c](file:///c:/Users/11218/Dashboard_P5/main/board_init.c) targeting the `ILI9881C` LCD driver and `GT9271` touch controller.
+* **Stride Optimization:** The active resolution width is adjusted to **736px** (instead of 720px) to align with the 64-byte hardware stride boundary, which is necessary for double buffering and DMA stability.
+

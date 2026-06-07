@@ -10,10 +10,13 @@
 #include "ui_events.h"
 #include "ui_helpers.h"
 #include "ui_screen_manager.h"
+#include "ui_wifi_settings.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+static lv_obj_t *ui_Keyboard_Search = NULL;
 
 LV_FONT_DECLARE(lv_font_montserrat_10);
 LV_FONT_DECLARE(lv_font_montserrat_12);
@@ -58,6 +61,10 @@ typedef struct {
   bool visible;
   lv_obj_t *checkbox;
   uint32_t last_update_time;
+  uint32_t count;
+  uint32_t last_recv_time;
+  float cycle_time;
+  bool is_tx;
 } can_row_t;
 
 static can_row_t can_rows[MAX_CAN_IDS];
@@ -72,28 +79,41 @@ void ui_clear_can_terminal(void) {
     // 1. Reset table to header only
     lv_table_set_row_cnt((lv_obj_t *)ui_Table_CAN_List, 1);
 
-    // 2. Re-populate with visible rows
+    // 2. Reset counters in tracker
+    for (int i = 0; i < can_row_count; i++) {
+      can_rows[i].count = 0;
+      can_rows[i].last_recv_time = 0;
+      can_rows[i].cycle_time = 0.0f;
+      can_rows[i].is_tx = false;
+    }
+
+    // 3. Re-populate with visible rows
     int new_table_row = 1;
     for (int i = 0; i < can_row_count; i++) {
       if (can_rows[i].visible) {
         // Update index
         can_rows[i].row_index = new_table_row;
 
-        // Set ID cell (Data cells will be empty until next update)
-        char id_str[16];
-        snprintf(id_str, sizeof(id_str), "%03X", (unsigned int)can_rows[i].id);
-        lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, new_table_row, 0,
-                                id_str);
+        // Set ID cell (showing direction RX by default after clear)
+        char id_str[32];
+        snprintf(id_str, sizeof(id_str), "%s | 0x%03X", can_rows[i].is_tx ? "TX" : "RX", (unsigned int)can_rows[i].id);
+        lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, new_table_row, 0, id_str);
+
+        // Set Name cell
+        const char *name = get_can_id_name(can_rows[i].id);
+        lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, new_table_row, 1, name ? name : "-");
+
+        // Clear other cells
+        lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, new_table_row, 2, "");
+        lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, new_table_row, 3, "");
+        lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, new_table_row, 4, "");
+        lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, new_table_row, 5, "");
 
         new_table_row++;
       } else {
         can_rows[i].row_index = -1;
       }
     }
-
-    // 3. Do NOT reset message count (per user request)
-    // can_message_count = 0;
-    // lv_label_set_text((lv_obj_t*)ui_Label_CAN_Count, "Messages: 0");
   }
 }
 
@@ -199,6 +219,53 @@ static void search_text_event_cb(lv_event_t *e) {
     if (text) {
       snprintf(search_text, sizeof(search_text), "%s", text);
     }
+  }
+}
+
+static void on_search_kb_ready(lv_event_t *e) {
+  lv_event_code_t code = lv_event_get_code(e);
+  if (code == LV_EVENT_READY || code == LV_EVENT_CANCEL) {
+    if (ui_Keyboard_Search) {
+      lv_obj_add_flag(ui_Keyboard_Search, LV_OBJ_FLAG_HIDDEN);
+    }
+    // Restore right_panel position
+    if (ui_TextArea_Search) {
+      lv_obj_t *right_panel = lv_obj_get_parent(lv_obj_get_parent((lv_obj_t *)ui_TextArea_Search));
+      if (right_panel) {
+        lv_obj_set_y(right_panel, 670);
+      }
+    }
+  }
+}
+
+static void on_search_focused(lv_event_t *e) {
+  lv_obj_t *ta = lv_event_get_target(e);
+
+  // Shift right_panel up to make search visible above the keyboard
+  lv_obj_t *right_panel = lv_obj_get_parent(lv_obj_get_parent(ta));
+  if (right_panel) {
+    lv_obj_set_y(right_panel, 350);
+  }
+
+  if (!ui_Keyboard_Search) {
+    ui_Keyboard_Search = lv_keyboard_create(ui_Screen3);
+    lv_obj_set_style_text_font(ui_Keyboard_Search, &montserrat_20_en_ru, 0);
+    lv_obj_set_size(ui_Keyboard_Search, 736, 400);
+    lv_obj_align(ui_Keyboard_Search, LV_ALIGN_BOTTOM_LEFT, 0, -80);
+    lv_keyboard_set_textarea(ui_Keyboard_Search, ta);
+    lv_obj_set_style_bg_color(ui_Keyboard_Search, lv_color_hex(0x111111), 0);
+    lv_obj_set_style_shadow_width(ui_Keyboard_Search, 0, 0);
+
+    lv_keyboard_set_map(ui_Keyboard_Search, LV_KEYBOARD_MODE_TEXT_LOWER, kb_map_en, kb_ctrl_en);
+    lv_keyboard_set_map(ui_Keyboard_Search, LV_KEYBOARD_MODE_TEXT_UPPER, kb_map_en_uc, kb_ctrl_en);
+    current_kb_lang = 0;
+
+    lv_obj_add_event_cb(ui_Keyboard_Search, kb_value_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_add_event_cb(ui_Keyboard_Search, on_search_kb_ready, LV_EVENT_READY, NULL);
+    lv_obj_add_event_cb(ui_Keyboard_Search, on_search_kb_ready, LV_EVENT_CANCEL, NULL);
+  } else {
+    lv_keyboard_set_textarea(ui_Keyboard_Search, ta);
+    lv_obj_clear_flag(ui_Keyboard_Search, LV_OBJ_FLAG_HIDDEN);
   }
 }
 
@@ -308,18 +375,22 @@ void ui_Screen3_screen_init(void) {
   lv_obj_set_style_text_font((lv_obj_t *)ui_Table_CAN_List,
                              &lv_font_montserrat_12, 0);
 
-  // Configure table columns for 720 width
-  lv_table_set_col_cnt((lv_obj_t *)ui_Table_CAN_List, 4);
-  lv_table_set_col_width((lv_obj_t *)ui_Table_CAN_List, 0, 80);  // ID
-  lv_table_set_col_width((lv_obj_t *)ui_Table_CAN_List, 1, 40);  // DLC
-  lv_table_set_col_width((lv_obj_t *)ui_Table_CAN_List, 2, 420); // DATA
-  lv_table_set_col_width((lv_obj_t *)ui_Table_CAN_List, 3, 150); // ASCII
+  // Configure table columns for 720 width (looking like the attached image)
+  lv_table_set_col_cnt((lv_obj_t *)ui_Table_CAN_List, 6);
+  lv_table_set_col_width((lv_obj_t *)ui_Table_CAN_List, 0, 110); // ID (e.g. 0x280 RX)
+  lv_table_set_col_width((lv_obj_t *)ui_Table_CAN_List, 1, 130); // Name (e.g. Motor_1)
+  lv_table_set_col_width((lv_obj_t *)ui_Table_CAN_List, 2, 40);  // Len
+  lv_table_set_col_width((lv_obj_t *)ui_Table_CAN_List, 3, 230); // Data
+  lv_table_set_col_width((lv_obj_t *)ui_Table_CAN_List, 4, 90);  // Cycle (s)
+  lv_table_set_col_width((lv_obj_t *)ui_Table_CAN_List, 5, 90);  // Count
 
   // Set headers
   lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, 0, 0, "ID");
-  lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, 0, 1, "DL");
-  lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, 0, 2, "DATA");
-  lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, 0, 3, "TEXT");
+  lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, 0, 1, "Name");
+  lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, 0, 2, "Len");
+  lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, 0, 3, "Data");
+  lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, 0, 4, "Cycle");
+  lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, 0, 5, "Count");
 
   can_row_count = 0;
 
@@ -454,6 +525,8 @@ void ui_Screen3_screen_init(void) {
                                    "Enter search text...");
   lv_obj_add_event_cb((lv_obj_t *)ui_TextArea_Search, search_text_event_cb,
                       LV_EVENT_VALUE_CHANGED, NULL);
+  lv_obj_add_event_cb((lv_obj_t *)ui_TextArea_Search, on_search_focused,
+                      LV_EVENT_FOCUSED, NULL);
 
   /*
   // --- Update speed slider (Removed) ---
@@ -487,16 +560,13 @@ void ui_Screen3_screen_init(void) {
 void ui_Screen3_screen_destroy(void) { lv_obj_del(ui_Screen3); }
 
 // Add/Update CAN message in table
-void ui_add_can_message(uint32_t id, uint8_t *data, uint8_t dlc) {
+// Add/Update CAN message in table (ext version supporting direction RX/TX)
+void ui_add_can_message_ext(uint32_t id, uint8_t *data, uint8_t dlc, bool is_tx) {
   if (!ui_Table_CAN_List)
     return;
 
-  // Check search text (if needed, but user wants static rows, so maybe just
-  // highlight?) For now, we'll filter out if it doesn't match search Note: We
-  // need to convert data to string to check search, which is expensive. Let's
-  // skip search for now or implement it later if requested.
-
   int row_idx = -1;
+  uint32_t now = lv_tick_get();
 
   // Find existing row
   for (int i = 0; i < can_row_count; i++) {
@@ -510,10 +580,22 @@ void ui_add_can_message(uint32_t id, uint8_t *data, uint8_t dlc) {
         row_idx = can_rows[i].row_index;
 
         // Per-row rate limiting (50ms)
-        uint32_t now = lv_tick_get();
         if (now - can_rows[i].last_update_time < 50) {
+          can_rows[i].count++;
+          if (can_rows[i].last_recv_time != 0) {
+            can_rows[i].cycle_time = (now - can_rows[i].last_recv_time) / 1000.0f;
+          }
+          can_rows[i].last_recv_time = now;
           return; // Too fast, skip update
         }
+        
+        // Update cycle time and count
+        if (can_rows[i].last_recv_time != 0) {
+          can_rows[i].cycle_time = (now - can_rows[i].last_recv_time) / 1000.0f;
+        }
+        can_rows[i].last_recv_time = now;
+        can_rows[i].count++;
+        can_rows[i].is_tx = is_tx;
         can_rows[i].last_update_time = now;
       } else {
         // ID exists but was cleared from table. Re-add it.
@@ -521,14 +603,20 @@ void ui_add_can_message(uint32_t id, uint8_t *data, uint8_t dlc) {
             lv_table_get_row_cnt((lv_obj_t *)ui_Table_CAN_List);
         row_idx = table_row_count;
         can_rows[i].row_index = row_idx;
-        can_rows[i].last_update_time = lv_tick_get();
+        can_rows[i].count = 1;
+        can_rows[i].cycle_time = 0.0f;
+        can_rows[i].last_recv_time = now;
+        can_rows[i].last_update_time = now;
+        can_rows[i].is_tx = is_tx;
 
         // Set ID cell
-        char id_str[16];
-        snprintf(id_str, sizeof(id_str), "%03X",
-                 (unsigned int)id); // Format: 101
-        lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, row_idx, 0,
-                                id_str);
+        char id_str[32];
+        snprintf(id_str, sizeof(id_str), "%s | 0x%03X", is_tx ? "TX" : "RX", (unsigned int)id);
+        lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, row_idx, 0, id_str);
+
+        // Set Name cell
+        const char *name = get_can_id_name(id);
+        lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, row_idx, 1, name ? name : "-");
       }
       break;
     }
@@ -544,7 +632,11 @@ void ui_add_can_message(uint32_t id, uint8_t *data, uint8_t dlc) {
     // Add to tracker
     can_rows[can_row_count].id = id;
     can_rows[can_row_count].visible = true; // Visible by default
-    can_rows[can_row_count].last_update_time = lv_tick_get();
+    can_rows[can_row_count].last_update_time = now;
+    can_rows[can_row_count].last_recv_time = now;
+    can_rows[can_row_count].count = 1;
+    can_rows[can_row_count].cycle_time = 0.0f;
+    can_rows[can_row_count].is_tx = is_tx;
 
     // Add to table
     uint32_t table_row_count =
@@ -571,16 +663,26 @@ void ui_add_can_message(uint32_t id, uint8_t *data, uint8_t dlc) {
     can_row_count++;
 
     // Set ID cell once
-    char id_str[16];
-    snprintf(id_str, sizeof(id_str), "%03X", (unsigned int)id); // Format: 101
+    char id_str[32];
+    snprintf(id_str, sizeof(id_str), "%s | 0x%03X", is_tx ? "TX" : "RX", (unsigned int)id);
     lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, row_idx, 0, id_str);
+
+    // Set Name cell once
+    const char *name = get_can_id_name(id);
+    lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, row_idx, 1, name ? name : "-");
   }
 
   // Check visibility
   bool is_visible = true;
+  uint32_t current_count = 1;
+  float current_cycle = 0.0f;
+  bool current_is_tx = false;
   for (int i = 0; i < can_row_count; i++) {
     if (can_rows[i].id == id) {
       is_visible = can_rows[i].visible;
+      current_count = can_rows[i].count;
+      current_cycle = can_rows[i].cycle_time;
+      current_is_tx = can_rows[i].is_tx;
       break;
     }
   }
@@ -588,10 +690,15 @@ void ui_add_can_message(uint32_t id, uint8_t *data, uint8_t dlc) {
   if (!is_visible)
     return; // Skip update if filtered out
 
+  // Update ID (Direction could change dynamically if the ID is both RX and TX)
+  char id_str[32];
+  snprintf(id_str, sizeof(id_str), "%s | 0x%03X", current_is_tx ? "TX" : "RX", (unsigned int)id);
+  lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, row_idx, 0, id_str);
+
   // Update DLC
   char dlc_str[4];
   snprintf(dlc_str, sizeof(dlc_str), "%d", dlc);
-  lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, row_idx, 1, dlc_str);
+  lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, row_idx, 2, dlc_str);
 
   // Update Data
   char data_hex_str[32] = {0};
@@ -601,27 +708,32 @@ void ui_add_can_message(uint32_t id, uint8_t *data, uint8_t dlc) {
     strncat(data_hex_str, byte_str,
             sizeof(data_hex_str) - strlen(data_hex_str) - 1);
   }
-  lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, row_idx, 2,
+  lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, row_idx, 3,
                           data_hex_str);
 
-  // Update ASCII
-  char data_ascii_str[9] = {0};
-  for (int i = 0; i < dlc && i < 8; i++) {
-    if (data[i] >= 32 && data[i] <= 126) {
-      data_ascii_str[i] = data[i];
-    } else {
-      data_ascii_str[i] = '.';
-    }
+  // Update Cycle Time
+  char cycle_str[16];
+  if (current_cycle > 0.0001f) {
+    snprintf(cycle_str, sizeof(cycle_str), "%.3fs", current_cycle);
+  } else {
+    snprintf(cycle_str, sizeof(cycle_str), "0.0s");
   }
-  data_ascii_str[dlc] = '\0';
-  lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, row_idx, 3,
-                          data_ascii_str);
+  lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, row_idx, 4, cycle_str);
+
+  // Update Count
+  char count_str[16];
+  snprintf(count_str, sizeof(count_str), "%lu", (unsigned long)current_count);
+  lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, row_idx, 5, count_str);
 
   // Update message count (total)
   can_message_count++;
   char count_text[32];
   snprintf(count_text, sizeof(count_text), "Messages: %d", can_message_count);
   lv_label_set_text((lv_obj_t *)ui_Label_CAN_Count, count_text);
+}
+
+void ui_add_can_message(uint32_t id, uint8_t *data, uint8_t dlc) {
+  ui_add_can_message_ext(id, data, dlc, false); // Default to RX (false)
 }
 
 // Update CAN status and message count
@@ -681,7 +793,7 @@ void ui_reset_can_statistics(void) {
 // Process CAN message for terminal and logger (Called from CAN task)
 // Add CAN message to terminal with filtering and search
 // Process CAN message for terminal and logger (Called from CAN task)
-void ui_process_real_can_message(uint32_t id, uint8_t *data, uint8_t dlc) {
+void ui_process_real_can_message_ext(uint32_t id, uint8_t *data, uint8_t dlc, bool is_tx) {
   if (!can_sniffer_active)
     return;
 
@@ -690,16 +802,14 @@ void ui_process_real_can_message(uint32_t id, uint8_t *data, uint8_t dlc) {
     return;
 
   // Log to SD card if recording
-  // Cast const away since can_logger_log might not take const yet (check logger
-  // header) Assuming can_logger_log takes (uint32_t, uint8_t*, uint8_t)
   can_logger_log(id, (uint8_t *)data, dlc);
 
   // Check if search term matches
   if (!can_sniffer_search_in_data((uint8_t *)data, dlc, search_text))
     return;
 
-  // Add to terminal (Table) - ui_add_can_message takes uint8_t*
-  ui_add_can_message(id, (uint8_t *)data, dlc);
+  // Add to terminal (Table)
+  ui_add_can_message_ext(id, (uint8_t *)data, dlc, is_tx);
 
   // Update statistics
   can_sniffer_update_statistics(id);
@@ -708,6 +818,10 @@ void ui_process_real_can_message(uint32_t id, uint8_t *data, uint8_t dlc) {
   last_can_id = id;
   last_can_dlc = dlc;
   memcpy(last_can_data, data, dlc > 8 ? 8 : dlc);
+}
+
+void ui_process_real_can_message(uint32_t id, uint8_t *data, uint8_t dlc) {
+  ui_process_real_can_message_ext(id, data, dlc, false);
 }
 
 /*

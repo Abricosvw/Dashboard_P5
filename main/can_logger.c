@@ -12,7 +12,7 @@
 static const char *TAG = "can_logger";
 
 // Helper to get human readable name for CAN ID
-static const char *get_can_id_name(uint32_t id) {
+const char *get_can_id_name(uint32_t id) {
   switch (id) {
   case 0x362:
     return "ACC_1";

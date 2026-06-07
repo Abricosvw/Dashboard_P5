@@ -24,21 +24,21 @@ static bool is_scanning = false;
 uint8_t current_kb_lang = 0; // 0=EN, 1=RU
 
 // Control maps define button widths (lower 4 bits = width ratio)
-// Russian keyboard: Row1=13 btns, Row2=11 btns, Row3=12 btns, Row4=5 btns
+// Russian keyboard: Row1=13 btns, Row2=11 btns, Row3=12 btns, Row4=6 btns
 const lv_btnmatrix_ctrl_t kb_ctrl_ru[] = {
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, // Row 1: 12 chars + backspace(wider)
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2,       // Row 2: 10 chars + enter(wider)
     2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, // Row 3: Shift(wider) + 9 chars + Enter
-    2, 2, 1, 4, 1 // Row 4: EN(wider) + 123(wider) + arrows + space(wide)
+    2, 2, 1, 4, 1, 2 // Row 4: EN(wider) + 123(wider) + arrows + space(wide) + hide(wider)
 };
 
 // English keyboard control map: Row1=11 btns, Row2=10 btns, Row3=12 btns,
-// Row4=5 btns
+// Row4=6 btns
 const lv_btnmatrix_ctrl_t kb_ctrl_en[] = {
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2,    // Row 1: 10 chars + backspace(wider)
     1, 1, 1, 1, 1, 1, 1, 1, 1, 2,       // Row 2: 9 chars + enter(wider)
     2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // Row 3: Shift(wider) + 11 chars
-    2, 2, 1, 4, 1 // Row 4: RU(wider) + 123(wider) + arrows + space(wide)
+    2, 2, 1, 4, 1, 2 // Row 4: RU(wider) + 123(wider) + arrows + space(wide) + hide(wider)
 };
 
 // Russian Cyrillic keyboard map (ЙЦУКЕН layout) - lowercase
@@ -47,7 +47,7 @@ const char *kb_map_ru[] = {
     "з", "х",     "ъ",  "Back", "\n",  "ф", "ы",     "в",  "а",
     "п", "р",     "о",  "л",    "д",   "ж", "э",     "\n", "Shift",
     "я", "ч",     "с",  "м",    "и",   "т", "ь",     "б",  "ю",
-    ".", "Enter", "\n", "EN",   "123", "<", "Space", ">",  ""};
+    ".", "Enter", "\n", "EN",   "123", "<", "Space", ">",  LV_SYMBOL_KEYBOARD, ""};
 
 // Russian Cyrillic keyboard map - uppercase
 const char *kb_map_ru_uc[] = {
@@ -55,21 +55,21 @@ const char *kb_map_ru_uc[] = {
     "З", "Х",     "Ъ",  "Back", "\n",  "Ф", "Ы",     "В",  "А",
     "П", "Р",     "О",  "Л",    "Д",   "Ж", "Э",     "\n", "Shift",
     "Я", "Ч",     "С",  "М",    "И",   "Т", "Ь",     "Б",  "Ю",
-    ".", "Enter", "\n", "EN",   "123", "<", "Space", ">",  ""};
+    ".", "Enter", "\n", "EN",   "123", "<", "Space", ">",  LV_SYMBOL_KEYBOARD, ""};
 
 // English QWERTY keyboard map - lowercase
 const char *kb_map_en[] = {
     "q",  "w",     "e",  "r",  "t",   "y", "u",     "i", "o", "p", "Back",
     "\n", "a",     "s",  "d",  "f",   "g", "h",     "j", "k", "l", "Enter",
     "\n", "Shift", "z",  "x",  "c",   "v", "b",     "n", "m", ".", ",",
-    "?",  "!",     "\n", "RU", "123", "<", "Space", ">", ""};
+    "?",  "!",     "\n", "RU", "123", "<", "Space", ">", LV_SYMBOL_KEYBOARD, ""};
 
 // English QWERTY keyboard map - uppercase
 const char *kb_map_en_uc[] = {
     "Q",  "W",     "E",  "R",  "T",   "Y", "U",     "I", "O", "P", "Back",
     "\n", "A",     "S",  "D",  "F",   "G", "H",     "J", "K", "L", "Enter",
     "\n", "Shift", "Z",  "X",  "C",   "V", "B",     "N", "M", ".", ",",
-    "?",  "!",     "\n", "RU", "123", "<", "Space", ">", ""};
+    "?",  "!",     "\n", "RU", "123", "<", "Space", ">", LV_SYMBOL_KEYBOARD, ""};
 
 // Custom numeric map for WiFi password entry
 const char *kb_map_num[] = {"1",  "2",   "3",  "Back",  "\n", "4", "5",
@@ -169,6 +169,8 @@ void kb_value_cb(lv_event_t *e) {
         lv_keyboard_set_mode(keyboard, LV_KEYBOARD_MODE_TEXT_UPPER);
       else
         lv_keyboard_set_mode(keyboard, LV_KEYBOARD_MODE_TEXT_LOWER);
+      return;
+    } else if (strcmp(txt, LV_SYMBOL_KEYBOARD) == 0) {
       return;
     }
   }
@@ -294,8 +296,19 @@ static void kb_event_cb(lv_event_t *e) {
   if (code == LV_EVENT_READY) {
     ESP_LOGI(TAG, "Keyboard: Enter pressed, connecting...");
     connect_click_cb(NULL);
+  } else if (code == LV_EVENT_CANCEL) {
+    ESP_LOGI(TAG, "Keyboard: Cancel/Hide pressed, closing dialog...");
+    if (pwd_ta) {
+      lv_obj_t *pwd_cont = lv_obj_get_parent(pwd_ta);
+      if (pwd_cont) {
+        lv_obj_del(pwd_cont);
+      }
+    }
+    if (kb) {
+      lv_obj_del(kb);
+      kb = NULL;
+    }
   }
-  // Note: We no longer handle LV_EVENT_DELETE here to avoid recursive deletion
 }
 
 static void ssid_select_cb(lv_event_t *e) {

@@ -248,10 +248,10 @@ esp_err_t board_init_display(esp_lcd_panel_handle_t *ret_panel,
   }
 
   // 4. Configure DPI panel - 736px WIDTH FOR STRIDE ALIGNMENT
-  ESP_LOGI(TAG, "  [4/5] Creating ILI9881C panel (736x1280 @ 50MHz)...");
+  ESP_LOGI(TAG, "  [4/5] Creating ILI9881C panel (736x1280 @ 40MHz, 2FB)...");
   esp_lcd_dpi_panel_config_t dpi_config = {
       .dpi_clk_src = MIPI_DSI_DPI_CLK_SRC_DEFAULT,
-      .dpi_clock_freq_mhz = 50, // Step 4: Lowered for transmission stability
+      .dpi_clock_freq_mhz = 40,
       .virtual_channel = 0,
       .pixel_format = LCD_COLOR_PIXEL_FORMAT_RGB565,
       .num_fbs = 2,
@@ -259,11 +259,11 @@ esp_err_t board_init_display(esp_lcd_panel_handle_t *ret_panel,
           {
               .h_size = 736, // Multiple of 64 bytes (736 * 2 = 1472)
               .v_size = 1280,
-              .hsync_back_porch = 120, // Step 3: Keep 120
-              .hsync_pulse_width = 80, // Step 5: Increased for line sync lock
+              .hsync_back_porch = 120,
+              .hsync_pulse_width = 80,
               .hsync_front_porch = 80,
-              .vsync_back_porch = 80,  // Step 2: Keep 80
-              .vsync_pulse_width = 20, // Step 1: Keep 20
+              .vsync_back_porch = 80,
+              .vsync_pulse_width = 20,
               .vsync_front_porch = 40,
           },
       .flags.use_dma2d = true, // REQUIRED for system stability on P4

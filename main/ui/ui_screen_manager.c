@@ -9,6 +9,7 @@
 #include "screens/ui_Screen5.h"
 #include "screens/ui_Screen6.h"
 #include "screens/ui_Screen7.h"
+#include "screens/ui_Screen9.h"
 
 #include "settings_config.h"
 #include "ui.h"
@@ -154,11 +155,40 @@ void general_touch_handler(lv_event_t *e) {
   }
 }
 
+// Helper: check if obj or any of its ancestors is a slider or switch
+static bool _is_interactive_widget(lv_obj_t *obj) {
+  extern const lv_obj_class_t lv_slider_class;
+  extern const lv_obj_class_t lv_switch_class;
+
+  while (obj) {
+    if (lv_obj_check_type(obj, &lv_slider_class)) return true;
+    if (lv_obj_check_type(obj, &lv_switch_class)) return true;
+    obj = lv_obj_get_parent(obj);
+  }
+  return false;
+}
+
 // Unified swipe gesture handler for all screens
 void ui_screen_swipe_event_cb(lv_event_t *e) {
   lv_event_code_t code = lv_event_get_code(e);
 
   if (code == LV_EVENT_GESTURE) {
+    // Check the event target (the object that received the gesture)
+    lv_obj_t *target = lv_event_get_target(e);
+    if (_is_interactive_widget(target)) {
+      ESP_LOGI("SWIPE", "Ignoring gesture: event target is interactive widget");
+      return;
+    }
+
+    // Check the object currently being pressed/dragged by the input device
+    // This is crucial: when dragging a slider, the gesture event bubbles up
+    // to the screen, but lv_indev_get_obj_act() still returns the slider knob
+    lv_obj_t *act_obj = lv_indev_get_obj_act();
+    if (_is_interactive_widget(act_obj)) {
+      ESP_LOGI("SWIPE", "Ignoring gesture: active indev object is interactive widget");
+      return;
+    }
+
     lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_get_act());
 
     if (dir == LV_DIR_LEFT) {
@@ -207,6 +237,9 @@ static bool ui_is_screen_enabled(screen_id_t screen_id) {
   case SCREEN_8:
     // Lux Dashboard - DISABLED
     return false;
+  case SCREEN_9:
+    // Air to Water Intercooler - ENABLED
+    return true;
   default:
     // Screens 1, 2, 4, 5 are managed by layout manager (empty check)
     // Need to map screen_id enum to layout manager index (which matches enum
@@ -220,7 +253,7 @@ screen_id_t ui_get_next_enabled_screen(screen_id_t current_screen,
                                        bool forward) {
   screen_id_t screens[] = {SCREEN_1, SCREEN_2, SCREEN_3,
                            SCREEN_4, SCREEN_5, SCREEN_6,
-                           SCREEN_7};
+                           SCREEN_7, SCREEN_9};
   int num_screens = sizeof(screens) / sizeof(screens[0]);
   int current_index = -1;
 
@@ -406,6 +439,17 @@ void ui_switch_to_screen(screen_id_t screen_id) {
     lv_scr_load_anim(ui_Screen7, anim_type, anim_time, 0, false);
     current_screen = SCREEN_7;
     ESP_LOGI("SCREEN_MANAGER", "Switched to SCREEN_7 (Open Claw)");
+    break;
+
+  case SCREEN_9:
+    // Lazy init: create Screen 9 on first use to save LVGL heap at boot
+    if (ui_Screen9 == NULL) {
+      ESP_LOGI("SCREEN_MANAGER", "Lazy-initializing Screen 9...");
+      ui_Screen9_screen_init();
+    }
+    lv_scr_load_anim(ui_Screen9, anim_type, anim_time, 0, false);
+    current_screen = SCREEN_9;
+    ESP_LOGI("SCREEN_MANAGER", "Switched to SCREEN_9 (Intercooler)");
     break;
 
   default:

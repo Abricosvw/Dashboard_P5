@@ -5,22 +5,21 @@
 // ==========================================================================
 #include "ui_Screen7.h"
 #include "../ui.h"
+#include "../ui_wifi_settings.h"
 #include "ai_manager.h"
 #include "ui_screen_manager.h"
-#include "../ui_wifi_settings.h"
 #include <esp_log.h>
 #include <stdio.h>
 #include <string.h>
 
+
 static const char *TAG = "SCREEN7";
-
-
 
 // Screen object
 lv_obj_t *ui_Screen7 = NULL;
 
 // Terminal components
-lv_obj_t *ui_Screen7_Terminal = NULL;  // Main scrollable terminal output
+lv_obj_t *ui_Screen7_Terminal = NULL; // Main scrollable terminal output
 lv_obj_t *ui_Screen7_Input = NULL;    // Text input area
 static lv_obj_t *keyboard = NULL;     // On-screen keyboard
 static lv_obj_t *status_label = NULL; // Status bar at top
@@ -28,27 +27,28 @@ static lv_obj_t *title_label = NULL;  // Title
 
 // Quick action buttons
 static lv_obj_t *btn_send = NULL;
+static int input_y;
 
 // Colors
-#define CLR_BG          0x0A0F1A
-#define CLR_PANEL       0x111827
-#define CLR_ACCENT      0x00D4FF
+#define CLR_BG 0x0A0F1A
+#define CLR_PANEL 0x111827
+#define CLR_ACCENT 0x00D4FF
 #define CLR_TERMINAL_BG 0x0D1117
 #define CLR_TERMINAL_FG 0x00FF88
-#define CLR_INPUT_BG    0x1A1F2E
-#define CLR_BTN_BG      0x1E293B
-#define CLR_BTN_ACTIVE  0x0E7490
-#define CLR_TEXT_DIM     0x94A3B8
-#define CLR_TEXT_WHITE   0xF1F5F9
-#define CLR_SEND         0x059669
-#define CLR_BORDER       0x334155
+#define CLR_INPUT_BG 0x1A1F2E
+#define CLR_BTN_BG 0x1E293B
+#define CLR_BTN_ACTIVE 0x0E7490
+#define CLR_TEXT_DIM 0x94A3B8
+#define CLR_TEXT_WHITE 0xF1F5F9
+#define CLR_SEND 0x059669
+#define CLR_BORDER 0x334155
 
 // Layout constants (portrait 736x1280)
 #define SCR_W 736
 #define SCR_H 1280
 #define TITLE_H 50
 #define STATUS_H 28
-#define TERMINAL_TOP (TITLE_H + 4)  // starts right below title bar
+#define TERMINAL_TOP (TITLE_H + 4) // starts right below title bar
 #define BTN_ROW_H 44
 #define INPUT_H 44
 #define NAV_H 60
@@ -78,7 +78,7 @@ static void telegram_help_event_cb(lv_event_t *e);
 // ---------- Helpers ----------
 
 static lv_obj_t *create_quick_btn(lv_obj_t *parent, const char *text,
-                                   lv_event_cb_t cb, int w) {
+                                  lv_event_cb_t cb, int w) {
   lv_obj_t *btn = lv_obj_create(parent);
   lv_obj_set_size(btn, w, BTN_ROW_H);
   lv_obj_set_style_bg_color(btn, lv_color_hex(CLR_BTN_BG), 0);
@@ -92,7 +92,8 @@ static lv_obj_t *create_quick_btn(lv_obj_t *parent, const char *text,
   lv_obj_add_flag(btn, LV_OBJ_FLAG_CLICKABLE);
 
   // Pressed style
-  lv_obj_set_style_bg_color(btn, lv_color_hex(CLR_BTN_ACTIVE), LV_STATE_PRESSED);
+  lv_obj_set_style_bg_color(btn, lv_color_hex(CLR_BTN_ACTIVE),
+                            LV_STATE_PRESSED);
 
   lv_obj_t *lbl = lv_label_create(btn);
   lv_label_set_text(lbl, text);
@@ -151,36 +152,42 @@ void ui_Screen7_set_status(const char *status) {
   }
 }
 
-
-
-
 // ---------- New Callbacks ----------
 
+static lv_obj_t *s_active_popup7 = NULL;
 
 static void popup_close_cb(lv_event_t *e) {
   lv_obj_t *popup = lv_event_get_user_data(e);
   if (popup) {
     lv_obj_del(popup);
+    if (popup == s_active_popup7) {
+      s_active_popup7 = NULL;
+    }
   }
 }
 
 static void lua_help_event_cb(lv_event_t *e) {
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+    if (s_active_popup7) {
+      lv_obj_del(s_active_popup7);
+      s_active_popup7 = NULL;
+    }
     lv_obj_t *popup = lv_obj_create(ui_Screen7);
+    s_active_popup7 = popup;
     lv_obj_set_size(popup, 600, 400);
     lv_obj_center(popup);
     lv_obj_set_style_bg_color(popup, lv_color_hex(0x1a1a1a), 0);
     lv_obj_set_style_border_width(popup, 2, 0);
     lv_obj_set_style_border_color(popup, lv_color_hex(0x00D4FF), 0);
-    
+
     lv_obj_t *help_text = lv_label_create(popup);
-    extern const char* lua_manager_get_help_text(void);
+    extern const char *lua_manager_get_help_text(void);
     lv_label_set_text(help_text, lua_manager_get_help_text());
     lv_obj_set_style_text_color(help_text, lv_color_white(), 0);
     lv_obj_set_style_text_font(help_text, &montserrat_20_en_ru, 0);
     lv_label_set_long_mode(help_text, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(help_text, 560);
-    
+
     lv_obj_t *close_btn = lv_btn_create(popup);
     lv_obj_set_size(close_btn, 120, 40);
     lv_obj_align(close_btn, LV_ALIGN_BOTTOM_MID, 0, 0);
@@ -194,23 +201,26 @@ static void lua_help_event_cb(lv_event_t *e) {
 
 static void gpio_map_event_cb(lv_event_t *e) {
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+    if (s_active_popup7) {
+      lv_obj_del(s_active_popup7);
+      s_active_popup7 = NULL;
+    }
     lv_obj_t *popup = lv_obj_create(ui_Screen7);
+    s_active_popup7 = popup;
     lv_obj_set_size(popup, 600, 450);
     lv_obj_center(popup);
     lv_obj_set_style_bg_color(popup, lv_color_hex(0x1a1a1a), 0);
     lv_obj_set_style_border_width(popup, 2, 0);
     lv_obj_set_style_border_color(popup, lv_color_hex(0x00FF88), 0);
-    
+
     lv_obj_t *map_text = lv_label_create(popup);
     lv_label_set_recolor(map_text, true);
-    lv_label_set_text(map_text, 
-      "ESP32-P4 GPIO Map:\n\n"
-      "#FF0000 0-3: JTAG/System (DO NOT USE)#\n"
-      "#00FF00 FREE PINS: 6, 22-32, 34-38, 45-52#\n"
-    );
+    lv_label_set_text(map_text, "ESP32-P4 GPIO Map:\n\n"
+                                "#FF0000 0-3: JTAG/System (DO NOT USE)#\n"
+                                "#00FF00 FREE PINS: 6, 22-32, 34-38, 45-52#\n");
     lv_obj_set_style_text_color(map_text, lv_color_white(), 0);
     lv_obj_set_style_text_font(map_text, &montserrat_20_en_ru, 0);
-    
+
     lv_obj_t *close_btn = lv_btn_create(popup);
     lv_obj_set_size(close_btn, 120, 40);
     lv_obj_align(close_btn, LV_ALIGN_BOTTOM_MID, 0, 0);
@@ -224,19 +234,25 @@ static void gpio_map_event_cb(lv_event_t *e) {
 
 static void telegram_help_event_cb(lv_event_t *e) {
   if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+    if (s_active_popup7) {
+      lv_obj_del(s_active_popup7);
+      s_active_popup7 = NULL;
+    }
     lv_obj_t *popup = lv_obj_create(ui_Screen7);
+    s_active_popup7 = popup;
     lv_obj_set_size(popup, 600, 450);
     lv_obj_center(popup);
     lv_obj_set_style_bg_color(popup, lv_color_hex(0x1a1a1a), 0);
     lv_obj_set_style_border_width(popup, 2, 0);
     lv_obj_set_style_border_color(popup, lv_color_hex(0x0088FF), 0);
-    
+
     lv_obj_t *map_text = lv_label_create(popup);
     lv_label_set_recolor(map_text, true);
-    lv_label_set_text(map_text, "#0088FF Telegram Messenger Setup:#\nSee ai_config.h");
+    lv_label_set_text(map_text,
+                      "#0088FF Telegram Messenger Setup:#\nSee ai_config.h");
     lv_obj_set_style_text_color(map_text, lv_color_white(), 0);
     lv_obj_set_style_text_font(map_text, &montserrat_20_en_ru, 0);
-    
+
     lv_obj_t *close_btn = lv_btn_create(popup);
     lv_obj_set_size(close_btn, 120, 40);
     lv_obj_align(close_btn, LV_ALIGN_BOTTOM_MID, 0, 0);
@@ -249,7 +265,6 @@ static void telegram_help_event_cb(lv_event_t *e) {
 }
 
 // ---------- Callbacks ----------
-
 
 static void send_command(void) {
   if (!ui_Screen7_Input)
@@ -311,35 +326,43 @@ static void on_files_clicked(lv_event_t *e) {
 }
 
 static void on_input_focused(lv_event_t *e) {
-  lv_obj_t *ta = lv_event_get_target(e);
+  (void)e;
 
   if (!keyboard) {
     keyboard = lv_keyboard_create(ui_Screen7);
-    lv_obj_set_style_text_font(keyboard, &montserrat_20_en_ru, 0); // Apply EN/RU font
+    lv_obj_set_style_text_font(keyboard, &montserrat_20_en_ru, 0);
     lv_obj_set_size(keyboard, SCR_W, KEYBOARD_H);
     lv_obj_align(keyboard, LV_ALIGN_BOTTOM_LEFT, 0, -NAV_H);
-    lv_keyboard_set_textarea(keyboard, ta);
+    lv_keyboard_set_textarea(keyboard, ui_Screen7_Input);
     lv_obj_set_style_bg_color(keyboard, lv_color_hex(CLR_PANEL), 0);
     lv_obj_set_style_shadow_width(keyboard, 0, 0);
 
     // Apply bilingual English layout by default with proper control map
-    lv_keyboard_set_map(keyboard, LV_KEYBOARD_MODE_TEXT_LOWER, kb_map_en, kb_ctrl_en);
-    lv_keyboard_set_map(keyboard, LV_KEYBOARD_MODE_TEXT_UPPER, kb_map_en_uc, kb_ctrl_en);
-    current_kb_lang = 0; // Default to English
+    lv_keyboard_set_map(keyboard, LV_KEYBOARD_MODE_TEXT_LOWER, kb_map_en,
+                        kb_ctrl_en);
+    lv_keyboard_set_map(keyboard, LV_KEYBOARD_MODE_TEXT_UPPER, kb_map_en_uc,
+                        kb_ctrl_en);
+    current_kb_lang = 0;
 
     // Add callback for custom layouts (RU/EN toggle, ABC, 123, manual buttons)
     lv_obj_add_event_cb(keyboard, kb_value_cb, LV_EVENT_VALUE_CHANGED, NULL);
-
     lv_obj_add_event_cb(keyboard, on_kb_ready, LV_EVENT_READY, NULL);
     lv_obj_add_event_cb(keyboard, on_kb_ready, LV_EVENT_CANCEL, NULL);
-    keyboard_visible = true;
   }
 
+  // Already visible — nothing to do
   if (keyboard_visible)
     return;
 
   keyboard_visible = true;
   lv_obj_clear_flag(keyboard, LV_OBJ_FLAG_HIDDEN);
+  lv_keyboard_set_textarea(keyboard, ui_Screen7_Input);
+
+  // Shift input field and send button UP above the keyboard
+  lv_obj_set_y(ui_Screen7_Input, (SCR_H - NAV_H - KEYBOARD_H) - INPUT_H - 10);
+  if (btn_send) {
+    lv_obj_set_y(btn_send, (SCR_H - NAV_H - KEYBOARD_H) - INPUT_H - 10);
+  }
 
   // Shrink terminal to make room for keyboard
   int terminal_h =
@@ -359,6 +382,12 @@ static void on_input_defocused(lv_event_t *e) {
   keyboard_visible = false;
   lv_obj_add_flag(keyboard, LV_OBJ_FLAG_HIDDEN);
 
+  // Restore input field and send button y-position
+  lv_obj_set_y(ui_Screen7_Input, input_y);
+  if (btn_send) {
+    lv_obj_set_y(btn_send, input_y);
+  }
+
   // Restore terminal height
   int terminal_h = SCR_H - TERMINAL_TOP - INPUT_H - BTN_ROW_H - NAV_H - 24;
   lv_obj_set_height(ui_Screen7_Terminal, terminal_h);
@@ -370,10 +399,9 @@ static void on_kb_ready(lv_event_t *e) {
   lv_event_code_t code = lv_event_get_code(e);
   if (code == LV_EVENT_READY) {
     send_command();
-    on_input_defocused(NULL);
-  } else if (code == LV_EVENT_CANCEL) {
-    on_input_defocused(NULL);
   }
+  // Hide the keyboard and restore layout
+  on_input_defocused(NULL);
 }
 
 // ---------- Screen Init ----------
@@ -417,9 +445,7 @@ void ui_Screen7_screen_init(void) {
   lv_obj_set_style_text_font(title_label, &montserrat_20_en_ru, 0);
   lv_obj_align(title_label, LV_ALIGN_LEFT_MID, 16, -2);
 
-
-
-// --- Terminal area ---
+  // --- Terminal area ---
   int terminal_h = 776; // Expanded height since Lua editor is moved
 
   ui_Screen7_Terminal = lv_textarea_create(ui_Screen7);
@@ -430,11 +456,14 @@ void ui_Screen7_screen_init(void) {
   lv_obj_clear_flag(ui_Screen7_Terminal, LV_OBJ_FLAG_CLICKABLE);
 
   // Terminal styling
-  lv_obj_set_style_bg_color(ui_Screen7_Terminal, lv_color_hex(CLR_TERMINAL_BG), 0);
+  lv_obj_set_style_bg_color(ui_Screen7_Terminal, lv_color_hex(CLR_TERMINAL_BG),
+                            0);
   lv_obj_set_style_bg_opa(ui_Screen7_Terminal, LV_OPA_COVER, 0);
-  lv_obj_set_style_text_color(ui_Screen7_Terminal, lv_color_hex(CLR_TERMINAL_FG), 0);
+  lv_obj_set_style_text_color(ui_Screen7_Terminal,
+                              lv_color_hex(CLR_TERMINAL_FG), 0);
   lv_obj_set_style_text_font(ui_Screen7_Terminal, &montserrat_20_en_ru, 0);
-  lv_obj_set_style_border_color(ui_Screen7_Terminal, lv_color_hex(CLR_BORDER), 0);
+  lv_obj_set_style_border_color(ui_Screen7_Terminal, lv_color_hex(CLR_BORDER),
+                                0);
   lv_obj_set_style_border_width(ui_Screen7_Terminal, 1, 0);
   lv_obj_set_style_radius(ui_Screen7_Terminal, 0, 0);
   lv_obj_set_style_shadow_width(ui_Screen7_Terminal, 0, 0);
@@ -445,39 +474,41 @@ void ui_Screen7_screen_init(void) {
   int btn_w = (SCR_W - 16 - 5 * 4) / 5;
 
   lv_obj_t *btn_clear2 = create_quick_btn(ui_Screen7, LV_SYMBOL_TRASH " Clr",
-                                           on_clear_clicked, btn_w);
+                                          on_clear_clicked, btn_w);
   lv_obj_set_pos(btn_clear2, 8, btn_term_y);
 
   lv_obj_t *btn_status2 = create_quick_btn(ui_Screen7, LV_SYMBOL_CHARGE " Stat",
-                                            on_status_clicked, btn_w);
+                                           on_status_clicked, btn_w);
   lv_obj_set_pos(btn_status2, 8 + (btn_w + 4) * 1, btn_term_y);
 
   lv_obj_t *btn_skills2 = create_quick_btn(ui_Screen7, LV_SYMBOL_LIST " Skls",
-                                            on_skills_clicked, btn_w);
+                                           on_skills_clicked, btn_w);
   lv_obj_set_pos(btn_skills2, 8 + (btn_w + 4) * 2, btn_term_y);
 
   lv_obj_t *btn_sched2 = create_quick_btn(ui_Screen7, LV_SYMBOL_REFRESH " Scd",
-                                           on_schedule_clicked, btn_w);
+                                          on_schedule_clicked, btn_w);
   lv_obj_set_pos(btn_sched2, 8 + (btn_w + 4) * 3, btn_term_y);
 
-  lv_obj_t *btn_files2 = create_quick_btn(ui_Screen7, LV_SYMBOL_DIRECTORY " Fls",
-                                           on_files_clicked, btn_w);
+  lv_obj_t *btn_files2 = create_quick_btn(
+      ui_Screen7, LV_SYMBOL_DIRECTORY " Fls", on_files_clicked, btn_w);
   lv_obj_set_pos(btn_files2, 8 + (btn_w + 4) * 4, btn_term_y);
 
   // --- Input row (text field + send button) ---
-  int input_y = btn_term_y + BTN_ROW_H + 50;
+  input_y = btn_term_y + BTN_ROW_H + 50;
 
   ui_Screen7_Input = lv_textarea_create(ui_Screen7);
   lv_obj_set_size(ui_Screen7_Input, SCR_W - 100, INPUT_H);
   lv_obj_set_pos(ui_Screen7_Input, 8, input_y);
-  lv_textarea_set_placeholder_text(ui_Screen7_Input, "Введите запрос для ИИ...");
+  lv_textarea_set_placeholder_text(ui_Screen7_Input,
+                                   "Введите запрос для ИИ...");
   lv_textarea_set_one_line(ui_Screen7_Input, true);
   lv_textarea_set_max_length(ui_Screen7_Input, 256);
 
   // Input styling
   lv_obj_set_style_bg_color(ui_Screen7_Input, lv_color_hex(CLR_INPUT_BG), 0);
   lv_obj_set_style_bg_opa(ui_Screen7_Input, LV_OPA_COVER, 0);
-  lv_obj_set_style_text_color(ui_Screen7_Input, lv_color_hex(CLR_TEXT_WHITE), 0);
+  lv_obj_set_style_text_color(ui_Screen7_Input, lv_color_hex(CLR_TEXT_WHITE),
+                              0);
   lv_obj_set_style_text_font(ui_Screen7_Input, &montserrat_20_en_ru, 0);
   lv_obj_set_style_border_color(ui_Screen7_Input, lv_color_hex(0x00D4FF), 0);
   lv_obj_set_style_border_width(ui_Screen7_Input, 1, 0);
@@ -485,8 +516,8 @@ void ui_Screen7_screen_init(void) {
   lv_obj_set_style_shadow_width(ui_Screen7_Input, 0, 0);
   lv_obj_set_style_pad_left(ui_Screen7_Input, 10, 0);
 
-  lv_obj_add_event_cb(ui_Screen7_Input, on_input_focused, LV_EVENT_FOCUSED, NULL);
-  lv_obj_add_event_cb(ui_Screen7_Input, on_input_defocused, LV_EVENT_DEFOCUSED, NULL);
+  lv_obj_add_event_cb(ui_Screen7_Input, on_input_focused, LV_EVENT_CLICKED,
+                      NULL);
 
   // Send button
   btn_send = lv_obj_create(ui_Screen7);
@@ -508,12 +539,13 @@ void ui_Screen7_screen_init(void) {
   lv_obj_set_style_text_font(send_lbl, &montserrat_20_en_ru, 0);
   lv_obj_center(send_lbl);
 
-
   // --- Keyboard ---
-  // Lazy initialized in on_input_focused to prevent boot-time LVGL mask calculation crash
+  // Lazy initialized in on_input_focused to prevent boot-time LVGL mask
+  // calculation crash
 
-  // --- Swipe navigation ---
-  lv_obj_add_event_cb(ui_Screen7, ui_screen_swipe_event_cb, LV_EVENT_GESTURE, NULL);
+  // --- Swipe navigation (DISABLED - causes crashes with interactive widgets) ---
+  // lv_obj_add_event_cb(ui_Screen7, ui_screen_swipe_event_cb, LV_EVENT_GESTURE,
+  //                     NULL);
 
   // --- Navigation buttons ---
   ui_create_standard_navigation_buttons(ui_Screen7);

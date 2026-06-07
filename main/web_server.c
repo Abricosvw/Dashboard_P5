@@ -443,6 +443,11 @@ static esp_err_t dashboard_get_handler(httpd_req_t *req) {
 }
 
 esp_err_t web_server_start(void) {
+  if (s_server != NULL) {
+    ESP_LOGI(TAG, "Web server is already running");
+    return ESP_OK;
+  }
+
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   config.uri_match_fn = httpd_uri_match_wildcard;
   config.max_uri_handlers = 12; // Increased for extra handlers

@@ -14,6 +14,8 @@
 #include "ui_helpers.h"
 #include "ui_layout_manager.h"
 #include "ui_screen_manager.h"
+#include "ui_updates.h"
+#include "settings_config.h"
 
 
 // EVENTS
@@ -34,6 +36,12 @@ bool touch_active = true;
 // #endif
 
 ///////////////////// SCREENS ////////////////////
+
+// Periodic LVGL timer callback to refresh gauge widgets from CAN data
+static void _ui_gauge_update_timer_cb(lv_timer_t *timer) {
+  (void)timer;
+  update_all_gauges();
+}
 
 void ui_init(void) {
   LV_EVENT_GET_COMP_CHILD = lv_event_register_id();
@@ -76,6 +84,13 @@ void ui_init(void) {
   ui_layout_manager_init();
 
   lv_scr_load(ui_Screen1);
+
+  // Start periodic gauge update timer (100ms = 10 FPS refresh for gauges)
+  lv_timer_create(_ui_gauge_update_timer_cb, 100, NULL);
+  ESP_LOGI("UI", "Gauge update timer started (100ms interval)");
+
+  // Sync global demo mode state with loaded settings
+  ui_set_global_demo_mode(demo_mode_get_enabled());
 }
 
 void ui_destroy(void) {
@@ -85,6 +100,8 @@ void ui_destroy(void) {
   ui_Screen4_screen_destroy();
   ui_Screen5_screen_destroy();
   ui_Screen6_screen_destroy();
+  ui_Screen7_screen_destroy();
+  ui_Screen9_screen_destroy();
 }
 
 /**

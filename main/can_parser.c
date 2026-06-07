@@ -36,15 +36,15 @@ static void parse_vw_pq35_46(const twai_message_t *message,
   case 0x280: // Motor_1: RPM (0.25 scaling)
     ecu_data->engine_rpm =
         ((uint16_t)message->data[3] << 8 | message->data[2]) * 0.25f;
-    ecu_data->eng_act_nm = message->data[1] * 0.39f;  // Inneres_Motormoment
+    ecu_data->eng_act_nm = (message->data[1] * 0.39f) * (g_max_torque_nm / 100.0f);  // Inneres_Motormoment in Nm
     ecu_data->tps_position = message->data[5] * 0.4f; // Throttle
-    ecu_data->eng_trg_nm = message->data[7] * 0.39f;  // Requested Torque
+    ecu_data->eng_trg_nm = (message->data[7] * 0.39f) * (g_max_torque_nm / 100.0f);  // Requested Torque in Nm
     break;
 
   case 0x288: // Motor_2: Coolant (PQ35/46 uses this for Coolant, PQ25 might
               // differ)
     ecu_data->clt_temp = (message->data[1] * 0.75f) - 48.0f;
-    ecu_data->limit_tq_nm = message->data[6] * 0.39f;
+    ecu_data->limit_tq_nm = (message->data[6] * 0.39f) * (g_max_torque_nm / 100.0f);
     break;
 
   case 0x380: // Motor_3: IAT
@@ -62,7 +62,16 @@ static void parse_vw_pq35_46(const twai_message_t *message,
     break;
 
   case 0x540: // Gear (Getriebe_2)
-    ecu_data->gear = (message->data[7] >> 4) & 0x0F;
+    ecu_data->gear = message->data[7] & 0x0F; // Low nibble: actual gear (P, R, N, 1-7)
+    ecu_data->selector_position = (message->data[7] >> 4) & 0x0F; // High nibble: selector lever position (P, R, N, D, S)
+    break;
+
+  case 0x440: // Getriebe_1: TCU Torque Request
+    ecu_data->tcu_tq_req_nm = (message->data[3] * 0.39f) * (g_max_torque_nm / 100.0f); // Inneres_Sollmotormoment in Nm
+    break;
+
+  case 0x488: // Motor_6: TCU Torque Actual
+    ecu_data->tcu_tq_act_nm = (message->data[2] * 0.39f) * (g_max_torque_nm / 100.0f); // Istmoment_Getriebe in Nm
     break;
 
   case 0x1A0: // Speed source (Bremse_1) - ABS Wheel Speed

@@ -1,10 +1,14 @@
 file(GLOB_RECURSE UI_SOURCES "ui/*.c")
 
-idf_component_register(SRCS "main.c" "board_init.c" "main_gui.c" "can_manager.c" "can_websocket.c" "wifi_init.c" "wifi_controller.c" "wifi_storage.c" "sd_card_manager.c" "web_server.c" "settings_manager.c" "audio_manager.c" "ecu_data.c" "can_parser.c" "can_logger.c" "background_task.c" "ai_manager.c" "ai_commands.c" "lua_manager.c" "telegram_manager.c" "ui/ui_sound_selector.c" "ui/ui_font_montserrat_20_en_ru.c" ${UI_SOURCES}
+idf_component_register(SRCS "main.c" "board_init.c" "main_gui.c" "can_manager.c" "can_websocket.c" "wifi_init.c" "wifi_controller.c" "wifi_storage.c" "sd_card_manager.c" "web_server.c" "settings_manager.c" "audio_manager.c" "ecu_data.c" "can_parser.c" "can_logger.c" "background_task.c" "ai_manager.c" "ai_commands.c" "lua_manager.c" "telegram_manager.c" "dsp_shim.c" "ui/ui_sound_selector.c" "ui/ui_font_montserrat_20_en_ru.c" ${UI_SOURCES}
                        INCLUDE_DIRS "." "ui" "include"
-                       REQUIRES esp_lcd esp_lcd_touch esp_lcd_touch_gt9271 esp_lcd_ili9881c esp_lvgl_port esp_hw_support esp_driver_ledc driver esp_wifi nvs_flash esp_event esp_netif fatfs esp_http_server esp_driver_sdmmc json esp_websocket_client i2c_bus esp_driver_ppa espressif__esp_wifi_remote espressif__esp_hosted esp_http_client esp-tls app_claw console espressif__esp-sr lua
+                       REQUIRES esp_lcd esp_lcd_touch esp_lcd_touch_gt9271 esp_lcd_ili9881c esp_lvgl_port esp_hw_support esp_driver_ledc driver esp_wifi nvs_flash esp_event esp_netif fatfs esp_http_server esp_driver_sdmmc json esp_websocket_client i2c_bus esp_driver_ppa espressif__esp_wifi_remote espressif__esp_hosted esp_http_client esp-tls app_claw console espressif__esp-sr espressif__esp-dsp lua
                        EMBED_TXTFILES "web/joystick.html")
 
 # Disable shadow rendering globally to prevent WDT on 1280x720 screen
 add_definitions(-DLV_DRAW_SW_SHADOW=0)
 add_definitions(-DLV_USE_DRAW_SW_SHADOW=0)
+
+# Force linker to keep dsps_bit_rev4r_fc32 from dsp_shim.c
+# (esp-sr pre-compiled blob needs it, but nothing in main references it directly)
+target_link_libraries(${COMPONENT_LIB} INTERFACE "-u dsps_bit_rev4r_fc32")

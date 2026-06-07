@@ -10,7 +10,7 @@ menu "App Claw Config"
     config APP_CLAW_ENABLE_EMOTE
         bool "Enable App Claw emote"
         depends on ESP_BOARD_DEV_DISPLAY_LCD_SUPPORT
-        default y
+        default n
         help
             Enable expression emote startup and emote asset packaging for boards
             with LCD display support.
@@ -46,14 +46,14 @@ menu "App Claw Config"
 
         config APP_CLAW_CAP_IM_QQ
             bool "Enable QQ capability"
-            default y
+            default n
             help
                 Enable the QQ capability and keep app_claw's direct dependency
                 on cap_im_qq.
 
         config APP_CLAW_CAP_IM_FEISHU
             bool "Enable Feishu capability"
-            default y
+            default n
             help
                 Enable the Feishu capability and keep app_claw's direct dependency
                 on cap_im_feishu.
@@ -67,7 +67,7 @@ menu "App Claw Config"
 
         config APP_CLAW_CAP_IM_WECHAT
             bool "Enable WeChat capability"
-            default y
+            default n
             help
                 Enable the WeChat capability and keep app_claw's direct dependency
                 on cap_im_wechat.
@@ -95,14 +95,14 @@ menu "App Claw Config"
 
         config APP_CLAW_CAP_MCP_CLIENT
             bool "Enable MCP client capability"
-            default y
+            default n
             help
                 Enable the MCP client capability and keep app_claw's direct dependency
                 on cap_mcp_client.
 
         config APP_CLAW_CAP_MCP_SERVER
             bool "Enable MCP server capability"
-            default y
+            default n
             help
                 Enable the MCP server capability and keep app_claw's direct dependency
                 on cap_mcp_server.
@@ -162,133 +162,133 @@ menu "App Claw Config"
 
         config APP_CLAW_LUA_MODULE_IMU
             bool "Enable IMU Lua module"
-            default y
+            default n
             help
                 Enable the IMU Lua module and keep app_claw's direct dependency
                 on lua_module_imu when Lua capability is enabled.
 
         config APP_CLAW_LUA_MODULE_BQ27220
             bool "Enable BQ27220 Lua module"
-            default y
+            default n
             help
                 Enable the BQ27220 Lua module and keep app_claw's direct dependency
                 on lua_module_bq27220 when Lua capability is enabled.
 
         config APP_CLAW_LUA_MODULE_TOUCH
             bool "Enable touch Lua module"
-            default y
+            default n
             help
                 Enable the touch Lua module and keep app_claw's direct dependency
                 on lua_module_touch when Lua capability is enabled.
 
         config APP_CLAW_LUA_MODULE_ADC
             bool "Enable ADC Lua module"
-            default y
+            default n
             help
                 Enable the ADC Lua module and keep app_claw's direct dependency
                 on lua_module_adc when Lua capability is enabled.
 
         config APP_CLAW_LUA_MODULE_BOARD_MANAGER
             bool "Enable board manager Lua module"
-            default y
+            default n
             help
                 Enable the board manager Lua module and keep app_claw's direct
                 dependency on lua_module_board_manager when Lua capability is enabled.
 
         config APP_CLAW_LUA_MODULE_CAPABILITY
             bool "Enable capability Lua module"
-            default y
+            default n
             help
                 Enable the capability Lua module and keep app_claw's direct
                 dependency on lua_module_call_capability when Lua capability is enabled.
 
         config APP_CLAW_LUA_MODULE_BUTTON
             bool "Enable button Lua module"
-            default y
+            default n
             help
                 Enable the button Lua module and keep app_claw's direct dependency
                 on lua_module_button when Lua capability is enabled.
 
         config APP_CLAW_LUA_MODULE_DELAY
             bool "Enable delay Lua module"
-            default y
+            default n
             help
                 Enable the delay Lua module and keep app_claw's direct dependency
                 on lua_module_delay when Lua capability is enabled.
 
         config APP_CLAW_LUA_MODULE_DISPLAY
             bool "Enable display Lua module"
-            default y
+            default n
             help
                 Enable the display Lua module and keep app_claw's direct dependency
                 on lua_module_display when Lua capability is enabled.
 
         config APP_CLAW_LUA_MODULE_ESP_HEAP
             bool "Enable esp_heap Lua module"
-            default y
+            default n
             help
                 Enable the esp_heap Lua module and keep app_claw's direct dependency
                 on lua_module_esp_heap when Lua capability is enabled.
 
         config APP_CLAW_LUA_MODULE_EVENT_PUBLISHER
             bool "Enable event publisher Lua module"
-            default y
+            default n
             help
                 Enable the event publisher Lua module and keep app_claw's direct
                 dependency on lua_module_event_publisher when Lua capability is enabled.
 
         config APP_CLAW_LUA_MODULE_GPIO
             bool "Enable GPIO Lua module"
-            default y
+            default n
             help
                 Enable the GPIO Lua module and keep app_claw's direct dependency
                 on lua_module_gpio when Lua capability is enabled.
 
         config APP_CLAW_LUA_MODULE_I2C
             bool "Enable I2C Lua module"
-            default y
+            default n
             help
                 Enable the I2C Lua module and keep app_claw's direct dependency
                 on lua_module_i2c when Lua capability is enabled.
 
         config APP_CLAW_LUA_MODULE_LED_STRIP
             bool "Enable LED strip Lua module"
-            default y
+            default n
             help
                 Enable the LED strip Lua module and keep app_claw's direct dependency
                 on lua_module_led_strip when Lua capability is enabled.
 
         config APP_CLAW_LUA_MODULE_MCPWM
             bool "Enable MCPWM Lua module"
-            default y
+            default n
             help
                 Enable the MCPWM Lua module and keep app_claw's direct dependency
                 on lua_module_mcpwm when Lua capability is enabled.
 
         config APP_CLAW_LUA_MODULE_STORAGE
             bool "Enable storage Lua module"
-            default y
+            default n
             help
                 Enable the storage Lua module and keep app_claw's direct dependency
                 on lua_module_storage when Lua capability is enabled.
 
         config APP_CLAW_LUA_MODULE_SYSTEM
             bool "Enable system Lua module"
-            default y
+            default n
             help
                 Enable the system Lua module and keep app_claw's direct dependency
                 on lua_module_system when Lua capability is enabled.
 
         config APP_CLAW_LUA_MODULE_UART
             bool "Enable UART Lua module"
-            default y
+            default n
             help
                 Enable the UART Lua module and keep app_claw's direct dependency
                 on lua_module_uart when Lua capability is enabled.
 
         config APP_CLAW_LUA_MODULE_AUDIO
             bool "Enable audio Lua module"
-            default y if ESP_BOARD_DEV_AUDIO_CODEC_SUPPORT
+            default n if ESP_BOARD_DEV_AUDIO_CODEC_SUPPORT
             default n
             help
                 Enable the audio Lua module and keep app_claw's direct dependency
@@ -297,14 +297,14 @@ menu "App Claw Config"
         config APP_CLAW_LUA_MODULE_LCD_TOUCH
             bool "Enable LCD touch Lua module"
             default y if ESP_BOARD_DEV_LCD_TOUCH_I2C_SUPPORT
-            default n
+            default y
             help
                 Enable the LCD touch Lua module and keep app_claw's direct dependency
                 on lua_module_lcd_touch when Lua capability is enabled.
 
         config APP_CLAW_LUA_MODULE_CAMERA
             bool "Enable camera Lua module"
-            default y if ESP_BOARD_DEV_CAMERA_SUPPORT
+            default n if ESP_BOARD_DEV_CAMERA_SUPPORT
             default n
             help
                 Enable the camera Lua module and keep app_claw's direct dependency

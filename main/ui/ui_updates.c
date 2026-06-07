@@ -3,6 +3,7 @@
 #include "ecu_data.h"
 #include "screens/ui_Screen6.h"
 #include "screens/ui_Screen8.h"
+#include "screens/ui_Screen9.h"
 #include "ui.h"
 #include "wifi_controller.h"
 #include <stdio.h>
@@ -260,4 +261,7 @@ void update_all_gauges(void) {
   }
 
   // AI status is now handled via ui_Screen7_set_status() called from ai_manager
+
+  // --- Screen 9 (Intercooler Controls) ---
+  ui_Screen9_update();
 }

@@ -525,16 +525,67 @@ static void lua_save_cb(lv_event_t *e) {
   }
 }
 
+static void on_lua_kb_ready(lv_event_t *e) {
+  lv_event_code_t code = lv_event_get_code(e);
+  if (code == LV_EVENT_READY || code == LV_EVENT_CANCEL) {
+    if (ui_Keyboard_Lua) {
+      lv_obj_add_flag(ui_Keyboard_Lua, LV_OBJ_FLAG_HIDDEN);
+    }
+    // Restore Lua text area height
+    if (ui_TextArea_Lua) {
+      lv_obj_set_height(ui_TextArea_Lua, 480);
+    }
+  }
+}
+
+static void on_lua_focused(lv_event_t *e) {
+  lv_obj_t *ta = lv_event_get_target(e);
+
+  // Shrink Lua text area height to not be covered by keyboard
+  lv_obj_set_height(ui_TextArea_Lua, 210);
+
+  if (!ui_Keyboard_Lua) {
+    ui_Keyboard_Lua = lv_keyboard_create(ui_Screen6);
+    lv_obj_set_style_text_font(ui_Keyboard_Lua, &montserrat_20_en_ru, 0);
+    lv_obj_set_size(ui_Keyboard_Lua, 736, 400);
+    lv_obj_align(ui_Keyboard_Lua, LV_ALIGN_BOTTOM_LEFT, 0, -80);
+    lv_keyboard_set_textarea(ui_Keyboard_Lua, ta);
+    lv_obj_set_style_bg_color(ui_Keyboard_Lua, lv_color_hex(0x111111), 0);
+    lv_obj_set_style_shadow_width(ui_Keyboard_Lua, 0, 0);
+
+    lv_keyboard_set_map(ui_Keyboard_Lua, LV_KEYBOARD_MODE_TEXT_LOWER, kb_map_en, kb_ctrl_en);
+    lv_keyboard_set_map(ui_Keyboard_Lua, LV_KEYBOARD_MODE_TEXT_UPPER, kb_map_en_uc, kb_ctrl_en);
+    current_kb_lang = 0;
+
+    lv_obj_add_event_cb(ui_Keyboard_Lua, kb_value_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_add_event_cb(ui_Keyboard_Lua, on_lua_kb_ready, LV_EVENT_READY, NULL);
+    lv_obj_add_event_cb(ui_Keyboard_Lua, on_lua_kb_ready, LV_EVENT_CANCEL, NULL);
+  } else {
+    lv_keyboard_set_textarea(ui_Keyboard_Lua, ta);
+    lv_obj_clear_flag(ui_Keyboard_Lua, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
+static lv_obj_t *s_active_popup = NULL;
+
 static void help_popup_close_cb(lv_event_t *e) {
   lv_obj_t *popup = (lv_obj_t *)lv_event_get_user_data(e);
   if (popup) {
     lv_obj_del_async(popup);  // Safe: deferred delete, won't crash mid-event
+    if (popup == s_active_popup) {
+      s_active_popup = NULL;
+    }
   }
 }
 
 static void gpio_map_cb(lv_event_t *e) {
   (void)e;
+  if (s_active_popup) {
+    lv_obj_del(s_active_popup);
+    s_active_popup = NULL;
+  }
   lv_obj_t *popup = lv_obj_create(ui_Screen6);
+  s_active_popup = popup;
   lv_obj_set_size(popup, 600, 500);
   lv_obj_center(popup);
   lv_obj_set_style_bg_color(popup, lv_color_hex(0x111111), 0);
@@ -570,7 +621,12 @@ static void gpio_map_cb(lv_event_t *e) {
 
 static void telegram_help_cb(lv_event_t *e) {
   (void)e;
+  if (s_active_popup) {
+    lv_obj_del(s_active_popup);
+    s_active_popup = NULL;
+  }
   lv_obj_t *popup = lv_obj_create(ui_Screen6);
+  s_active_popup = popup;
   lv_obj_set_size(popup, 600, 500);
   lv_obj_center(popup);
   lv_obj_set_style_bg_color(popup, lv_color_hex(0x111111), 0);
@@ -611,7 +667,12 @@ static void telegram_help_cb(lv_event_t *e) {
 
 static void lua_help_cb(lv_event_t *e) {
   (void)e;
+  if (s_active_popup) {
+    lv_obj_del(s_active_popup);
+    s_active_popup = NULL;
+  }
   lv_obj_t *popup = lv_obj_create(ui_Screen6);
+  s_active_popup = popup;
   lv_obj_set_size(popup, 600, 500);
   lv_obj_center(popup);
   lv_obj_set_style_bg_color(popup, lv_color_hex(0x111111), 0);
@@ -931,6 +992,7 @@ void ui_Screen6_screen_init(void) {
     "end\n");
 
   lv_textarea_set_cursor_click_pos(ui_TextArea_Lua, true);
+  lv_obj_add_event_cb(ui_TextArea_Lua, on_lua_focused, LV_EVENT_FOCUSED, NULL);
 
   // Lua Buttons Row
   int lua_btn_y = lua_editor_y + lua_editor_h + 6;

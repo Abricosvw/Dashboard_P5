@@ -25,7 +25,34 @@ static system_settings_t g_system_settings = {
     .max_rpm_limit = 7000.0f,
     .audio_alerts_enabled = true,
     .ecu_address = "192.168.4.1",
-    .screen_brightness = 80 // Default brightness
+    .screen_brightness = 80, // Default brightness
+    
+    // Gauge Visibility Settings (Screen 1)
+    .show_map = true,
+    .show_wastegate = true,
+    .show_tps = true,
+    .show_rpm = true,
+    .show_boost = true,
+    .show_tcu = true,
+
+    // Screen 2
+    .show_oil_press = true,
+    .show_oil_temp = true,
+    .show_water_temp = true,
+    .show_fuel_press = true,
+    .show_battery = true,
+
+    // Screen 4
+    .show_pedal = true,
+    .show_wg_pos = true,
+    .show_bov = true,
+    .show_tcu_req = true,
+    .show_tcu_act = true,
+    .show_eng_req = true,
+
+    // Screen 5
+    .show_eng_act = true,
+    .show_limit_tq = true
 };
 
 // Data stream (simple circular buffer)

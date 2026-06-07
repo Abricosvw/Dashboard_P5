@@ -5,6 +5,7 @@
 #include "audio_manager.h"
 #include "background_task.h"
 #include "can_manager.h"
+#include "ecu_data.h"
 #include "cap_im_tg.h"
 #include "display_init.h"
 #include "driver/gpio.h"
@@ -52,6 +53,9 @@ static void list_sd_files(const char *path) {
 
 void app_main(void) {
   ESP_LOGI(TAG, "=== Dashboard_P4 Starting ===");
+
+  // Initialize ECU data system (creates mutex for thread-safe updates)
+  ecu_data_init();
 
   // Initialize NVS first (needed for WiFi and other settings)
   esp_err_t ret = nvs_flash_init();
@@ -155,26 +159,43 @@ void app_main(void) {
   wifi_controller_init();
 
   // =========================================================================
-  // PHASE 7: APPLICATION SERVICES
+  // PHASE 7: APPLICATION SERVICES — staggered to avoid PSRAM bandwidth
+  // contention with LCD DPI. Each heavy subsystem gets a stabilization
+  // window so DMA streams don't starve the display controller.
   // =========================================================================
   ESP_LOGI(TAG, "[7] CAN Bus init...");
   can_init();
+  ESP_LOGI(TAG, "[7] Heap after CAN: Internal=%lu, PSRAM=%lu",
+           (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+           (unsigned long)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+  vTaskDelay(pdMS_TO_TICKS(2000)); // Let LCD DPI stabilize after WiFi+CAN DMA
 
   // =========================================================================
-  // PHASE 8: LUA ENGINE
+  // PHASE 8: LUA ENGINE (lightweight — just creates the VM, no DMA)
   // =========================================================================
   ESP_LOGI(TAG, "[8] Lua Engine init...");
   lua_manager_init();
+  ESP_LOGI(TAG, "[8] Heap after Lua: Internal=%lu, PSRAM=%lu",
+           (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+           (unsigned long)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+  vTaskDelay(pdMS_TO_TICKS(1000));
 
   // =========================================================================
-  // PHASE 9: AI ASSISTANT
+  // PHASE 9: AI ASSISTANT (HEAVIEST — AFE creates continuous PSRAM DMA)
+  // Delayed 5s to let LCD DPI and WiFi DMA settle into stable patterns.
   // =========================================================================
-  ESP_LOGI(TAG, "[9] AI Manager init...");
+  ESP_LOGI(TAG, "[9] AI Manager init (waiting 5s for LCD/WiFi DMA to stabilize)...");
+  vTaskDelay(pdMS_TO_TICKS(5000));
   ai_manager_init();
   ai_manager_start();
+  ESP_LOGI(TAG, "[9] Heap after AI+AFE: Internal=%lu, PSRAM=%lu",
+           (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+           (unsigned long)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+  // Give AFE ring-buffer 3s to reach steady-state before adding more load
+  vTaskDelay(pdMS_TO_TICKS(3000));
 
   // =========================================================================
-  // PHASE 9.1: CAPABILITIES
+  // PHASE 9.1: CAPABILITIES (registers caps, moderate memory)
   // =========================================================================
   ESP_LOGI(TAG, "[9.1] ESP-Claw Capabilities init...");
   app_claw_config_t claw_cfg = {0}; // Defaults from Kconfig will be used
@@ -186,16 +207,24 @@ void app_main(void) {
       .im_attachment_root = "/sdcard/SYSTEM/TELEGRAM",
   };
   app_capabilities_init(&claw_cfg, &claw_paths);
+  ESP_LOGI(TAG, "[9.1] Heap after Claw: Internal=%lu, PSRAM=%lu",
+           (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+           (unsigned long)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+  vTaskDelay(pdMS_TO_TICKS(2000));
+
+  // =========================================================================
+  // PHASE 10: TELEGRAM (MbedTLS allocates ~40KB in PSRAM for TLS context)
+  // Started last to avoid fragmenting PSRAM before AFE allocates its buffers.
+  // =========================================================================
+  ESP_LOGI(TAG, "[10] Telegram Manager init (waiting 2s for final stability)...");
+  vTaskDelay(pdMS_TO_TICKS(2000));
+  telegram_init();
+  ESP_LOGI(TAG, "[10] Heap after Telegram: Internal=%lu, PSRAM=%lu",
+           (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+           (unsigned long)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
 
   ESP_LOGI(TAG, "=== System Ready! ===");
-  ESP_LOGI(TAG, "(Telegram will start automatically after WiFi gets IP)");
-
-  // Wait for WiFi to connect and SDIO to stabilize before starting Telegram
-  // app_capabilities_init already set up the Event Router correctly.
-  // telegram_init will see ESP_ERR_INVALID_STATE from claw_event_router_init
-  // (already initialized) and will correctly skip that step.
-  ESP_LOGI(TAG, "[10] Telegram Manager init...");
-  telegram_init();
+  ESP_LOGI(TAG, "(Total staggered boot overhead: ~15s for subsystem stability)");
 
   int boot_msg_timer = 30; // Delay 30 seconds to let Telegram polling stabilize
 

@@ -23,6 +23,7 @@ extern void *ui_Label_CAN_Count;
 
 // Functions for updating CAN terminal
 extern void ui_add_can_message(uint32_t id, uint8_t *data, uint8_t dlc);
+extern void ui_add_can_message_ext(uint32_t id, uint8_t *data, uint8_t dlc, bool is_tx);
 extern void ui_update_can_status(int connected, int message_count);
 extern void ui_clear_can_terminal(void);
 extern void ui_set_search_text(const char *search_text);
@@ -34,6 +35,8 @@ extern int ui_get_can_sniffer_active(void);
 extern void ui_get_last_can_message(uint32_t *id, uint8_t *data, uint8_t *dlc);
 extern void ui_process_real_can_message(uint32_t id, uint8_t *data,
                                         uint8_t dlc);
+extern void ui_process_real_can_message_ext(uint32_t id, uint8_t *data,
+                                            uint8_t dlc, bool is_tx);
 
 #ifdef __cplusplus
 } /*extern "C"*/

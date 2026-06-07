@@ -6,6 +6,7 @@
 #include "can_manager.h" // For getting CAN data
 #include "ui/settings_config.h" // For brightness etc
 #include "ui/screens/ui_Screen6.h" // For setting terminal text
+#include "ui/screens/ui_Screen9.h" // For pump/fan speed getters
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -95,7 +96,7 @@ static int l_stop_can_log(lua_State *L) {
 
 static int l_switch_screen(lua_State *L) {
     int screen_id = luaL_checkinteger(L, 1);
-    if (screen_id >= 1 && screen_id <= 8) {
+    if (screen_id >= 1 && screen_id <= 9) {
         if (example_lvgl_lock(100)) {
             ui_switch_to_screen((screen_id_t)(screen_id - 1));
             example_lvgl_unlock();
@@ -230,6 +231,13 @@ static int l_txCan(lua_State *L) {
     esp_err_t err = twai_transmit(&msg, pdMS_TO_TICKS(10));
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "Lua txCan failed: %s", esp_err_to_name(err));
+    } else {
+        // Log to UI sniffer as TX
+        extern void ui_process_real_can_message_ext(uint32_t id, uint8_t *data, uint8_t dlc, bool is_tx);
+        if (example_lvgl_lock(10)) {
+            ui_process_real_can_message_ext(msg.identifier, msg.data, msg.data_length_code, true); // true = TX
+            example_lvgl_unlock();
+        }
     }
     
     return 0;
@@ -267,6 +275,134 @@ static int l_mcu_standby(lua_State *L) {
     return 0;
 }
 
+static int l_get_pump_speed(lua_State *L) {
+    lua_pushinteger(L, ui_Screen9_get_actual_pump_speed());
+    return 1;
+}
+
+static int l_get_fan_speed(lua_State *L) {
+    lua_pushinteger(L, ui_Screen9_get_actual_fan_speed());
+    return 1;
+}
+
+static int l_get_pump_mode(lua_State *L) {
+    lua_pushboolean(L, ui_Screen9_get_pump_is_auto());
+    return 1;
+}
+
+static int l_set_pump_mode(lua_State *L) {
+    bool is_auto = lua_toboolean(L, 1);
+    ui_Screen9_set_pump_is_auto(is_auto);
+    return 0;
+}
+
+static int l_get_pump_state(lua_State *L) {
+    lua_pushboolean(L, ui_Screen9_get_pump_manual_on());
+    return 1;
+}
+
+static int l_set_pump_state(lua_State *L) {
+    bool manual_on = lua_toboolean(L, 1);
+    ui_Screen9_set_pump_manual_on(manual_on);
+    return 0;
+}
+
+static int l_get_pump_manual_speed(lua_State *L) {
+    lua_pushinteger(L, ui_Screen9_get_pump_manual_speed());
+    return 1;
+}
+
+static int l_set_pump_manual_speed(lua_State *L) {
+    int speed = luaL_checkinteger(L, 1);
+    ui_Screen9_set_pump_manual_speed(speed);
+    return 0;
+}
+
+static int l_get_fan_mode(lua_State *L) {
+    lua_pushboolean(L, ui_Screen9_get_fan_is_auto());
+    return 1;
+}
+
+static int l_set_fan_mode(lua_State *L) {
+    bool is_auto = lua_toboolean(L, 1);
+    ui_Screen9_set_fan_is_auto(is_auto);
+    return 0;
+}
+
+static int l_get_fan_state(lua_State *L) {
+    lua_pushboolean(L, ui_Screen9_get_fan_manual_on());
+    return 1;
+}
+
+static int l_set_fan_state(lua_State *L) {
+    bool manual_on = lua_toboolean(L, 1);
+    ui_Screen9_set_fan_manual_on(manual_on);
+    return 0;
+}
+
+static int l_get_fan_manual_speed(lua_State *L) {
+    lua_pushinteger(L, ui_Screen9_get_fan_manual_speed());
+    return 1;
+}
+
+static int l_set_fan_manual_speed(lua_State *L) {
+    int speed = luaL_checkinteger(L, 1);
+    ui_Screen9_set_fan_manual_speed(speed);
+    return 0;
+}
+
+static int l_get_pump_map_temp(lua_State *L) {
+    int idx = luaL_checkinteger(L, 1);
+    lua_pushinteger(L, ui_Screen9_get_pump_map_temp(idx));
+    return 1;
+}
+
+static int l_set_pump_map_temp(lua_State *L) {
+    int idx = luaL_checkinteger(L, 1);
+    int temp = luaL_checkinteger(L, 2);
+    ui_Screen9_set_pump_map_temp(idx, temp);
+    return 0;
+}
+
+static int l_get_pump_map_speed(lua_State *L) {
+    int idx = luaL_checkinteger(L, 1);
+    lua_pushinteger(L, ui_Screen9_get_pump_map_speed(idx));
+    return 1;
+}
+
+static int l_set_pump_map_speed(lua_State *L) {
+    int idx = luaL_checkinteger(L, 1);
+    int speed = luaL_checkinteger(L, 2);
+    ui_Screen9_set_pump_map_speed(idx, speed);
+    return 0;
+}
+
+static int l_get_fan_map_temp(lua_State *L) {
+    int idx = luaL_checkinteger(L, 1);
+    lua_pushinteger(L, ui_Screen9_get_fan_map_temp(idx));
+    return 1;
+}
+
+static int l_set_fan_map_temp(lua_State *L) {
+    int idx = luaL_checkinteger(L, 1);
+    int temp = luaL_checkinteger(L, 2);
+    ui_Screen9_set_fan_map_temp(idx, temp);
+    return 0;
+}
+
+static int l_get_fan_map_speed(lua_State *L) {
+    int idx = luaL_checkinteger(L, 1);
+    lua_pushinteger(L, ui_Screen9_get_fan_map_speed(idx));
+    return 1;
+}
+
+static int l_set_fan_map_speed(lua_State *L) {
+    int idx = luaL_checkinteger(L, 1);
+    int speed = luaL_checkinteger(L, 2);
+    ui_Screen9_set_fan_map_speed(idx, speed);
+    return 0;
+}
+
 // --- Dynamic Bindings & Help Generation ---
 typedef struct {
     const char *name;
@@ -294,10 +430,32 @@ static const lua_binding_t g_lua_bindings[] = {
     {"canRxAdd", l_canRxAdd, "canRxAdd([bus], id) - Subscribe Lua to CAN ID (rusEFI)."},
     {"setTickRate", l_setTickRate, "setTickRate(hz) - Set background tick rate (rusEFI)."},
     {"mcu_standby", l_mcu_standby, "mcu_standby() - Simulated standby (rusEFI)."},
+    {"get_pump_speed", l_get_pump_speed, "get_pump_speed() - Returns intercooler pump speed (0-100%)."},
+    {"get_fan_speed", l_get_fan_speed, "get_fan_speed() - Returns electric fan speed (0-100%)."},
+    {"get_pump_mode", l_get_pump_mode, "get_pump_mode() - Returns true if pump is in AUTO mode."},
+    {"set_pump_mode", l_set_pump_mode, "set_pump_mode(is_auto) - Sets pump mode to AUTO (true) or MANUAL (false)."},
+    {"get_pump_state", l_get_pump_state, "get_pump_state() - Returns true if pump is manual ON."},
+    {"set_pump_state", l_set_pump_state, "set_pump_state(on) - Sets pump manual ON (true) or OFF (false)."},
+    {"get_pump_manual_speed", l_get_pump_manual_speed, "get_pump_manual_speed() - Returns pump manual speed (0-100%)."},
+    {"set_pump_manual_speed", l_set_pump_manual_speed, "set_pump_manual_speed(spd) - Sets pump manual speed (0-100%)."},
+    {"get_fan_mode", l_get_fan_mode, "get_fan_mode() - Returns true if fan is in AUTO mode."},
+    {"set_fan_mode", l_set_fan_mode, "set_fan_mode(is_auto) - Sets fan mode to AUTO (true) or MANUAL (false)."},
+    {"get_fan_state", l_get_fan_state, "get_fan_state() - Returns true if fan is manual ON."},
+    {"set_fan_state", l_set_fan_state, "set_fan_state(on) - Sets fan manual ON (true) or OFF (false)."},
+    {"get_fan_manual_speed", l_get_fan_manual_speed, "get_fan_manual_speed() - Returns fan manual speed (0-100%)."},
+    {"set_fan_manual_speed", l_set_fan_manual_speed, "set_fan_manual_speed(spd) - Sets fan manual speed (0-100%)."},
+    {"get_pump_map_temp", l_get_pump_map_temp, "get_pump_map_temp(idx) - Gets pump map temperature at index idx (0-9)."},
+    {"set_pump_map_temp", l_set_pump_map_temp, "set_pump_map_temp(idx, temp) - Sets pump map temperature at index idx (0-9)."},
+    {"get_pump_map_speed", l_get_pump_map_speed, "get_pump_map_speed(idx) - Gets pump map speed at index idx (0-9)."},
+    {"set_pump_map_speed", l_set_pump_map_speed, "set_pump_map_speed(idx, speed) - Sets pump map speed at index idx (0-9)."},
+    {"get_fan_map_temp", l_get_fan_map_temp, "get_fan_map_temp(idx) - Gets fan map temp at index idx (0-9)."},
+    {"set_fan_map_temp", l_set_fan_map_temp, "set_fan_map_temp(idx, temp) - Sets fan map temp at index idx (0-9)."},
+    {"get_fan_map_speed", l_get_fan_map_speed, "get_fan_map_speed(idx) - Gets fan map speed at index idx (0-9)."},
+    {"set_fan_map_speed", l_set_fan_map_speed, "set_fan_map_speed(idx, speed) - Sets fan map speed at index idx (0-9)."},
 };
 static const int num_bindings = sizeof(g_lua_bindings) / sizeof(g_lua_bindings[0]);
 
-static char g_help_text_buffer[1024] = {0};
+static char g_help_text_buffer[4096] = {0};
 
 const char* lua_manager_get_help_text(void) {
     if (g_help_text_buffer[0] == '\0') {
@@ -441,7 +599,10 @@ esp_err_t lua_manager_execute(const char *script) {
             char err_msg[256];
             snprintf(err_msg, sizeof(err_msg), "Error: %s", err);
             extern void ui_Screen6_set_lua_text(const char *text);
-            ui_Screen6_set_lua_text(err_msg);
+            if (example_lvgl_lock(500)) {
+                ui_Screen6_set_lua_text(err_msg);
+                example_lvgl_unlock();
+            }
             
             lua_pop(L, 1);
             xSemaphoreGive(lua_mutex);

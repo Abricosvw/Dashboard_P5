@@ -19,7 +19,8 @@ typedef enum {
   SCREEN_5 = 4, // ECU Data Page 2
   SCREEN_6 = 5, // Device Parameters Settings
   SCREEN_7 = 6, // Open Claw AI Terminal
-  SCREEN_8 = 7  // Luxury Sport Dashboard (New)
+  SCREEN_8 = 7, // Luxury Sport Dashboard (New)
+  SCREEN_9 = 8  // Air to Water Intercooler (New)
 } screen_id_t;
 
 // Screen management functions

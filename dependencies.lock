@@ -1,4 +1,34 @@
 dependencies:
+  claw_cap:
+    dependencies: []
+    source:
+      path: C:\Users\11218\Dashboard_P5\components\claw_modules\claw_cap
+      type: local
+    version: '*'
+  claw_core:
+    dependencies: []
+    source:
+      path: C:\Users\11218\Dashboard_P5\components\claw_modules\claw_core
+      type: local
+    version: '*'
+  claw_event_router:
+    dependencies: []
+    source:
+      path: C:\Users\11218\Dashboard_P5\components\claw_modules\claw_event_router
+      type: local
+    version: '*'
+  claw_memory:
+    dependencies: []
+    source:
+      path: C:\Users\11218\Dashboard_P5\components\claw_modules\claw_memory
+      type: local
+    version: '*'
+  claw_skill:
+    dependencies: []
+    source:
+      path: C:\Users\11218\Dashboard_P5\components\claw_modules\claw_skill
+      type: local
+    version: '*'
   es8311:
     dependencies: []
     source:
@@ -30,7 +60,7 @@ dependencies:
       type: service
     version: 1.1.5
   espressif/esp-dsp:
-    component_hash: 3e7bbd487f1357a1d4944d0c85966d049501ea281b8a4c7f93f7cfedd5b7f23d
+    component_hash: c1832a2020342144d0de7940f73184584f182b3e9aa53180ee86c84ce7ff14dc
     dependencies:
     - name: idf
       require: private
@@ -38,21 +68,21 @@ dependencies:
     source:
       registry_url: https://components.espressif.com
       type: service
-    version: 1.4.12
+    version: 1.8.1
   espressif/esp-sr:
-    component_hash: 9b41fd5ae5960c393bfd3559cd6e5fa2a95c0bf833915cebafe57fb8c4e4c396
+    component_hash: 0580454068909c2854eb4572a6df137c916c5d81ad2198da938958578de9a90e
     dependencies:
     - name: espressif/esp-dsp
       registry_url: https://components.espressif.com
       require: private
-      version: <=1.5.0
+      version: ^1.2.1
     - name: idf
       require: private
-      version: '>=5.0'
+      version: '>=4.4'
     source:
       registry_url: https://components.espressif.com/
       type: service
-    version: 1.9.5
+    version: 1.9.0
   espressif/esp_codec_dev:
     component_hash: 014948481bda426cd46714f297fe1891711246c62bea288863a8cc8cf13ef1f0
     dependencies:
@@ -325,6 +355,11 @@ dependencies:
     - esp32p4
     version: 1.0.6
 direct_dependencies:
+- claw_cap
+- claw_core
+- claw_event_router
+- claw_memory
+- claw_skill
 - espressif/es8311
 - espressif/esp-sr
 - espressif/esp_hosted
@@ -336,6 +371,6 @@ direct_dependencies:
 - idf
 - lvgl/lvgl
 - waveshare/esp32_p4_nano
-manifest_hash: 18a309399ff509869a300f1a61926a4ec610f70a6e6b3ac40e53caa87e7b776f
+manifest_hash: 7c957eeb69748e86f9df2e065878bfc52f29d0616d5de220f3172c3c200011cd
 target: esp32p4
 version: 2.0.0
