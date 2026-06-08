@@ -16,10 +16,9 @@ void ui_updates_set_demo_mode(bool enabled) { global_demo_mode = enabled; }
 // It reads the latest data from the global ECU data struct
 // and updates all the gauge widgets on all screens.
 // Helper function to update gauge value, text, and color
-// Helper function to update gauge value, text, and color
-static void update_gauge(gauge_id_t id, lv_obj_t *arc, lv_obj_t *label, float value,
-                         const char *default_fmt, float warn_thr, float crit_thr,
-                         bool invert_logic, lv_color_t normal_color) {
+void update_gauge(gauge_id_t id, lv_obj_t *arc, lv_obj_t *label, float value,
+                  const char *default_fmt, float warn_thr, float crit_thr,
+                  bool invert_logic, lv_color_t normal_color) {
   if (arc == NULL && label == NULL)
     return;
 
