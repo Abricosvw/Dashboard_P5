@@ -336,23 +336,12 @@ void ui_Screen8_screen_init(void) {
   lv_obj_set_flex_align(footer, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
                         LV_FLEX_ALIGN_CENTER);
 
-  const char *gears[] = {"P", "N", "D"};
-  for (int i = 0; i < 3; i++) {
-    lv_obj_t *g = lv_label_create(footer);
-    lv_label_set_text(g, gears[i]);
-    lv_obj_set_style_text_font(g, &lv_font_montserrat_24, 0);
+  ui_Label_Gear_S8 = lv_label_create(footer);
+  lv_label_set_text(ui_Label_Gear_S8, "-");
+  lv_obj_set_style_text_font(ui_Label_Gear_S8, &lv_font_montserrat_48, 0);
+  lv_obj_set_style_text_color(ui_Label_Gear_S8, lv_color_hex(0xFF0000), 0); // Sporty Red
+  lv_obj_center(ui_Label_Gear_S8);
 
-    if (i == 2) { // D selected
-      lv_obj_set_style_text_color(g, lv_color_hex(0xFFFFFF), 0);
-      lv_obj_set_style_bg_color(g, lv_color_hex(0xFF0000), 0);
-      lv_obj_set_style_bg_opa(g, LV_OPA_COVER, 0);
-      lv_obj_set_style_pad_all(g, 10, 0);
-      lv_obj_set_style_radius(g, 5, 0);
-    } else {
-      lv_obj_set_style_text_color(g, lv_color_hex(0x444444), 0);
-      lv_obj_set_style_pad_all(g, 10, 0);
-    }
-  }
 
   if (demo_mode_get_enabled()) {
     ui_Screen8_update_animations(true);
