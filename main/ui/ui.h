@@ -88,6 +88,9 @@ void ui_destroy(void);
 // Global demo mode control
 void ui_set_global_demo_mode(bool enabled);
 
+// Unit selection click callback
+void ui_gauge_click_event_cb(lv_event_t *e);
+
 #ifdef __cplusplus
 } /*extern "C"*/
 #endif

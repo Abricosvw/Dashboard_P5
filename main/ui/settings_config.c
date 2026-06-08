@@ -26,8 +26,8 @@ static void settings_to_json(const touch_settings_t *settings, char *buffer,
                              size_t buffer_size) {
   system_settings_t *sys_settings = system_settings_get();
 
-  // A more robust implementation would use a proper JSON library
-  snprintf(buffer, buffer_size,
+  // Format the base fields
+  int len = snprintf(buffer, buffer_size,
            "{\"sensitivity\":%d,\"demo_mode\":%s,\"screen3_enabled\":%s,\"nav_"
            "buttons_enabled\":%s,"
            "\"show_map\":%s,\"show_wastegate\":%s,\"show_tps\":%s,\"show_rpm\":"
@@ -36,8 +36,11 @@ static void settings_to_json(const touch_settings_t *settings, char *buffer,
            "\"show_fuel_press\":%s,\"show_battery\":%s,"
            "\"show_pedal\":%s,\"show_wg_pos\":%s,\"show_bov\":%s,\"show_tcu_"
            "req\":%s,\"show_tcu_act\":%s,\"show_eng_req\":%s,"
-           "\"show_eng_act\":%s,\"show_limit_tq\":%s,\"can_platform\":%d,"
-           "\"boot_sound_path\":\"%s\"}",
+           "\"show_eng_act\":%s,\"show_limit_tq\":%s,"
+           "\"show_iat\":%s,\"show_speed\":%s,\"show_trans_temp\":%s,"
+           "\"show_afr\":%s,\"show_egt\":%s,\"show_knock_retard\":%s,\"show_boost_act\":%s,"
+           "\"can_platform\":%d,"
+           "\"boot_sound_path\":\"%s\",",
            settings->touch_sensitivity_level,
            settings->demo_mode_enabled ? "true" : "false",
            settings->screen3_enabled ? "true" : "false",
@@ -61,7 +64,35 @@ static void settings_to_json(const touch_settings_t *settings, char *buffer,
            sys_settings->show_eng_req ? "true" : "false",
            sys_settings->show_eng_act ? "true" : "false",
            sys_settings->show_limit_tq ? "true" : "false",
+           sys_settings->show_iat ? "true" : "false",
+           sys_settings->show_speed ? "true" : "false",
+           sys_settings->show_trans_temp ? "true" : "false",
+           sys_settings->show_afr ? "true" : "false",
+           sys_settings->show_egt ? "true" : "false",
+           sys_settings->show_knock_retard ? "true" : "false",
+           sys_settings->show_boost_act ? "true" : "false",
            settings->can_platform, settings->boot_sound_path);
+
+  // Now append units array: "units":[0,0,...]}
+  if (len > 0 && (size_t)len < buffer_size) {
+    char *p = buffer + len;
+    size_t rem = buffer_size - len;
+    int w = snprintf(p, rem, "\"units\":[");
+    if (w > 0 && (size_t)w < rem) {
+      p += w;
+      rem -= w;
+      for (int i = 0; i < GAUGE_MAX; i++) {
+        w = snprintf(p, rem, "%d%s", settings->gauge_units[i], (i == GAUGE_MAX - 1) ? "" : ",");
+        if (w > 0 && (size_t)w < rem) {
+          p += w;
+          rem -= w;
+        } else {
+          break;
+        }
+      }
+      snprintf(p, rem, "]}");
+    }
+  }
 }
 
 // Helper to deserialize settings from a JSON string
@@ -144,6 +175,36 @@ static bool settings_from_json(const char *json_str,
 
     PARSE_BOOL("show_eng_act", sys_settings->show_eng_act);
     PARSE_BOOL("show_limit_tq", sys_settings->show_limit_tq);
+    PARSE_BOOL("show_iat", sys_settings->show_iat);
+    PARSE_BOOL("show_speed", sys_settings->show_speed);
+    PARSE_BOOL("show_trans_temp", sys_settings->show_trans_temp);
+    PARSE_BOOL("show_afr", sys_settings->show_afr);
+    PARSE_BOOL("show_egt", sys_settings->show_egt);
+    PARSE_BOOL("show_knock_retard", sys_settings->show_knock_retard);
+    PARSE_BOOL("show_boost_act", sys_settings->show_boost_act);
+
+    // Sync to touch_settings_t
+    settings->show_iat = sys_settings->show_iat;
+    settings->show_speed = sys_settings->show_speed;
+    settings->show_trans_temp = sys_settings->show_trans_temp;
+    settings->show_afr = sys_settings->show_afr;
+    settings->show_egt = sys_settings->show_egt;
+    settings->show_knock_retard = sys_settings->show_knock_retard;
+    settings->show_boost_act = sys_settings->show_boost_act;
+
+    // Parse units array
+    const char *units_key = "\"units\":[";
+    char *units_ptr = strstr(json_str, units_key);
+    if (units_ptr) {
+      char *p = units_ptr + strlen(units_key);
+      for (int i = 0; i < GAUGE_MAX; i++) {
+        settings->gauge_units[i] = atoi(p);
+        sys_settings->gauge_units[i] = settings->gauge_units[i];
+        p = strchr(p, ',');
+        if (p) p++;
+        else break;
+      }
+    }
 
     // Parse boot_sound_path
     const char *sound_key = "\"boot_sound_path\":\"";
@@ -173,7 +234,6 @@ void settings_init_defaults(touch_settings_t *settings) {
     settings = &current_settings;
   settings->touch_sensitivity_level = DEFAULT_TOUCH_SENSITIVITY;
   settings->demo_mode_enabled = DEFAULT_DEMO_MODE_ENABLED;
-  settings->demo_mode_enabled = DEFAULT_DEMO_MODE_ENABLED;
   settings->screen3_enabled = DEFAULT_SCREEN3_ENABLED;
   settings->nav_buttons_enabled = true; // FORCE ON FOR DEBUGGING
   settings->can_platform = DEFAULT_CAN_PLATFORM;
@@ -183,6 +243,52 @@ void settings_init_defaults(touch_settings_t *settings) {
     settings->screen1_arcs_enabled[i] = true;
   for (int i = 0; i < SCREEN2_ARCS_COUNT; i++)
     settings->screen2_arcs_enabled[i] = true;
+
+  // New gauges visibility defaults
+  settings->show_iat = true;
+  settings->show_speed = true;
+  settings->show_trans_temp = true;
+  settings->show_afr = true;
+  settings->show_egt = true;
+  settings->show_knock_retard = true;
+  settings->show_boost_act = true;
+
+  // Initialize gauge units defaults
+  for (int i = 0; i < 26; i++) {
+    settings->gauge_units[i] = 0;
+  }
+  settings->gauge_units[GAUGE_MAP] = UNIT_KPA;
+  settings->gauge_units[GAUGE_BOOST] = UNIT_KPA;
+  settings->gauge_units[GAUGE_BOOST_ACT] = UNIT_KPA;
+  settings->gauge_units[GAUGE_OIL_PRESS] = UNIT_KPA;
+  settings->gauge_units[GAUGE_FUEL_PRESS] = UNIT_KPA;
+  settings->gauge_units[GAUGE_AFR] = UNIT_LAMBDA;
+  settings->gauge_units[GAUGE_OIL_TEMP] = UNIT_CELSIUS;
+  settings->gauge_units[GAUGE_WATER_TEMP] = UNIT_CELSIUS;
+  settings->gauge_units[GAUGE_IAT] = UNIT_CELSIUS;
+  settings->gauge_units[GAUGE_TRANS_TEMP] = UNIT_CELSIUS;
+  settings->gauge_units[GAUGE_EGT] = UNIT_CELSIUS;
+  settings->gauge_units[GAUGE_SPEED] = UNIT_KMH;
+  settings->gauge_units[GAUGE_TCU_REQ] = UNIT_NM;
+  settings->gauge_units[GAUGE_TCU_ACT] = UNIT_NM;
+  settings->gauge_units[GAUGE_ENG_REQ] = UNIT_NM;
+  settings->gauge_units[GAUGE_ENG_ACT] = UNIT_NM;
+  settings->gauge_units[GAUGE_LIMIT_TQ] = UNIT_NM;
+
+  // Sync with sys_settings
+  system_settings_t *sys_settings = system_settings_get();
+  if (sys_settings) {
+    sys_settings->show_iat = true;
+    sys_settings->show_speed = true;
+    sys_settings->show_trans_temp = true;
+    sys_settings->show_afr = true;
+    sys_settings->show_egt = true;
+    sys_settings->show_knock_retard = true;
+    sys_settings->show_boost_act = true;
+    for (int i = 0; i < 26; i++) {
+      sys_settings->gauge_units[i] = settings->gauge_units[i];
+    }
+  }
 
   ESP_LOGI(TAG,
            "Initialized default settings: Demo=%s, Screen3=%s, NavButtons=%s, "

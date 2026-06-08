@@ -41,21 +41,17 @@ static lv_anim_t anim_fuel_pressure;
 static lv_anim_t anim_battery_voltage; // Вернули Battery анимацию
 
 static void anim_value_cb(void *var, int32_t v) {
-  lv_arc_set_value((lv_obj_t *)var, v);
-
   if (var == ui_Arc_Oil_Pressure) {
-    lv_label_set_text_fmt(ui_Label_Oil_Pressure_Value, "%d", (int)v);
+    update_gauge(GAUGE_OIL_PRESS, ui_Arc_Oil_Pressure, ui_Label_Oil_Pressure_Value, v * 100.0f, "%.1f", 200, 100, true, lv_color_hex(0xFF6B35));
   } else if (var == ui_Arc_Oil_Temp) {
-    lv_label_set_text_fmt(ui_Label_Oil_Temp_Value, "%d°C", (int)v);
+    update_gauge(GAUGE_OIL_TEMP, ui_Arc_Oil_Temp, ui_Label_Oil_Temp_Value, v, "%.0f", 110, 120, false, lv_color_hex(0xFFD700));
   } else if (var == ui_Arc_Water_Temp) {
-    lv_label_set_text_fmt(ui_Label_Water_Temp_Value, "%d°C", (int)v);
+    update_gauge(GAUGE_WATER_TEMP, ui_Arc_Water_Temp, ui_Label_Water_Temp_Value, v, "%.0f", 105, 115, false, lv_color_hex(0x00D4FF));
   } else if (var == ui_Arc_Fuel_Pressure) {
-    lv_label_set_text_fmt(ui_Label_Fuel_Pressure_Value, "%d", (int)v);
+    update_gauge(GAUGE_FUEL_PRESS, ui_Arc_Fuel_Pressure, ui_Label_Fuel_Pressure_Value, v * 100.0f, "%.1f", 300, 200, true, lv_color_hex(0x00FF88));
   } else if (var == ui_Arc_Battery_Voltage) {
-    lv_label_set_text_fmt(ui_Label_Battery_Voltage_Value, "%.1f", v / 10.0f);
+    update_gauge(GAUGE_BATTERY, ui_Arc_Battery_Voltage, ui_Label_Battery_Voltage_Value, v / 10.0f, "%.1f", 12.0, 11.5, true, lv_color_hex(0xFFD700));
   }
-  // Coolant Temp убран, Battery Voltage возвращен
-  // Coolant Temp убран, Battery Voltage возвращен
 }
 
 // Helper to get container of a gauge
@@ -74,7 +70,7 @@ void ui_Screen2_update_layout(void) {
 
 static void create_gauge(lv_obj_t *parent, lv_obj_t **arc, lv_obj_t **label,
                          const char *title, const char *unit, lv_color_t color,
-                         int32_t min_val, int32_t max_val, int x, int y) {
+                         int32_t min_val, int32_t max_val, int x, int y, gauge_id_t gauge_id) {
   // Container - такой же размер как на Screen1
   lv_obj_t *cont = lv_obj_create(parent);
   lv_obj_set_width(cont, 330);
@@ -89,6 +85,10 @@ static void create_gauge(lv_obj_t *parent, lv_obj_t **arc, lv_obj_t **label,
   lv_obj_set_style_radius(cont, 15, 0);
   lv_obj_set_style_pad_all(cont, 10, 0);
   lv_obj_set_style_shadow_width(cont, 0, 0); // Disable shadow for performance
+
+  // Add click support for unit switching
+  lv_obj_add_flag(cont, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(cont, ui_gauge_click_event_cb, LV_EVENT_CLICKED, (void*)(uintptr_t)gauge_id);
 
   // Title
   lv_obj_t *label_title = lv_label_create(cont);
@@ -137,7 +137,7 @@ void ui_Screen2_screen_init(void) {
   lv_obj_set_style_bg_color(ui_Screen2, lv_color_hex(0x1a1a1a),
                             LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_bg_opa(ui_Screen2, LV_OPA_COVER,
-                          LV_PART_MAIN | LV_STATE_DEFAULT);
+                            LV_PART_MAIN | LV_STATE_DEFAULT);
 
   ESP_LOGI("SCREEN2",
            "Screen2 initialized with HARD FIXED size: 720x1280 (Portrait)");
@@ -153,25 +153,25 @@ void ui_Screen2_screen_init(void) {
   // Row 1
   create_gauge(ui_Screen2, &ui_Arc_Oil_Pressure, &ui_Label_Oil_Pressure_Value,
                "Oil Pressure", "bar", lv_color_hex(0xFF6B35), 0, 10, col1_x,
-               row1_y);
+               row1_y, GAUGE_OIL_PRESS);
 
   create_gauge(ui_Screen2, &ui_Arc_Oil_Temp, &ui_Label_Oil_Temp_Value,
                "Oil Temp", "°C", lv_color_hex(0xFFD700), 60, 140, col2_x,
-               row1_y);
+               row1_y, GAUGE_OIL_TEMP);
 
   // Row 2
   create_gauge(ui_Screen2, &ui_Arc_Water_Temp, &ui_Label_Water_Temp_Value,
                "Water Temp", "°C", lv_color_hex(0x00D4FF), 60, 120, col1_x,
-               row2_y);
+               row2_y, GAUGE_WATER_TEMP);
 
   create_gauge(ui_Screen2, &ui_Arc_Fuel_Pressure, &ui_Label_Fuel_Pressure_Value,
                "Fuel Pressure", "bar", lv_color_hex(0x00FF88), 0, 8, col2_x,
-               row2_y);
+               row2_y, GAUGE_FUEL_PRESS);
 
   // Row 3
   create_gauge(ui_Screen2, &ui_Arc_Battery_Voltage,
                &ui_Label_Battery_Voltage_Value, "Battery", "V",
-               lv_color_hex(0xFFD700), 11, 15, col1_x, row3_y);
+               lv_color_hex(0xFFD700), 11, 15, col1_x, row3_y, GAUGE_BATTERY);
 
   // Apply initial layout
   ui_Screen2_update_layout();

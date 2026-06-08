@@ -60,7 +60,7 @@ void ui_Screen4_update_layout(void) {
 // Helper function to create a gauge
 static void create_gauge(lv_obj_t *parent, lv_obj_t **arc, lv_obj_t **label,
                          const char *title, const char *unit, lv_color_t color,
-                         int32_t min_val, int32_t max_val, int x, int y) {
+                         int32_t min_val, int32_t max_val, int x, int y, gauge_id_t gauge_id) {
   lv_obj_t *cont = lv_obj_create(parent);
   lv_obj_set_width(cont, 330);
   lv_obj_set_height(cont, 360);
@@ -74,6 +74,10 @@ static void create_gauge(lv_obj_t *parent, lv_obj_t **arc, lv_obj_t **label,
   lv_obj_set_style_radius(cont, 15, 0);
   lv_obj_set_style_pad_all(cont, 10, 0);
   lv_obj_set_style_shadow_width(cont, 0, 0); // Disable shadow for performance
+
+  // Add click support for unit switching
+  lv_obj_add_flag(cont, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(cont, ui_gauge_click_event_cb, LV_EVENT_CLICKED, (void*)(uintptr_t)gauge_id);
 
   lv_obj_t *label_title = lv_label_create(cont);
   lv_label_set_text(label_title, title);
@@ -124,25 +128,25 @@ void ui_Screen4_screen_init(void) {
   // Row 1
   create_gauge(ui_Screen4, &ui_Arc_Abs_Pedal, &ui_Label_Abs_Pedal_Value,
                "Abs. Pedal Pos", "%", lv_color_hex(0x00D4FF), 0, 100, col1_x,
-               row1_y);
+               row1_y, GAUGE_PEDAL);
   create_gauge(ui_Screen4, &ui_Arc_WG_Pos, &ui_Label_WG_Pos_Value,
                "Wastegate Pos", "%", lv_color_hex(0x00FF88), 0, 100, col2_x,
-               row1_y);
+               row1_y, GAUGE_WG_POS);
 
   // Row 2
   create_gauge(ui_Screen4, &ui_Arc_BOV, &ui_Label_BOV_Value, "BOV", "%",
-               lv_color_hex(0xFFD700), 0, 100, col1_x, row2_y);
+               lv_color_hex(0xFFD700), 0, 100, col1_x, row2_y, GAUGE_BOV);
   create_gauge(ui_Screen4, &ui_Arc_TCU_TQ_Req, &ui_Label_TCU_TQ_Req_Value,
                "TCU Tq Req", "Nm", lv_color_hex(0xFF6B35), 0, 500, col2_x,
-               row2_y);
+               row2_y, GAUGE_TCU_REQ);
 
   // Row 3
   create_gauge(ui_Screen4, &ui_Arc_TCU_TQ_Act, &ui_Label_TCU_TQ_Act_Value,
                "TCU Tq Act", "Nm", lv_color_hex(0xFF3366), 0, 500, col1_x,
-               row3_y);
+               row3_y, GAUGE_TCU_ACT);
   create_gauge(ui_Screen4, &ui_Arc_Eng_TQ_Req, &ui_Label_Eng_TQ_Req_Value,
                "Eng Tq Req", "Nm", lv_color_hex(0x8A2BE2), 0, 500, col2_x,
-               row3_y);
+               row3_y, GAUGE_ENG_REQ);
 
   // Gear Label
   ui_Label_Gear = lv_label_create(ui_Screen4);
@@ -214,23 +218,18 @@ void ui_Screen4_screen_init(void) {
 }
 
 static void anim_value_cb_screen4(void *var, int32_t v) {
-  lv_arc_set_value((lv_obj_t *)var, v);
-
-  char buf[16];
-  snprintf(buf, sizeof(buf), "%d", (int)v);
-
   if (var == ui_Arc_Abs_Pedal)
-    lv_label_set_text(ui_Label_Abs_Pedal_Value, buf);
+    update_gauge(GAUGE_PEDAL, ui_Arc_Abs_Pedal, ui_Label_Abs_Pedal_Value, v, "%.1f", 110, 120, false, lv_color_hex(0x00D4FF));
   else if (var == ui_Arc_WG_Pos)
-    lv_label_set_text(ui_Label_WG_Pos_Value, buf);
+    update_gauge(GAUGE_WG_POS, ui_Arc_WG_Pos, ui_Label_WG_Pos_Value, v, "%.1f", 110, 120, false, lv_color_hex(0x00FF88));
   else if (var == ui_Arc_BOV)
-    lv_label_set_text(ui_Label_BOV_Value, buf);
+    update_gauge(GAUGE_BOV, ui_Arc_BOV, ui_Label_BOV_Value, v, "%.1f", 110, 120, false, lv_color_hex(0xFFD700));
   else if (var == ui_Arc_TCU_TQ_Req)
-    lv_label_set_text(ui_Label_TCU_TQ_Req_Value, buf);
+    update_gauge(GAUGE_TCU_REQ, ui_Arc_TCU_TQ_Req, ui_Label_TCU_TQ_Req_Value, v, "%.0f", 450, 500, false, lv_color_hex(0xFF6B35));
   else if (var == ui_Arc_TCU_TQ_Act)
-    lv_label_set_text(ui_Label_TCU_TQ_Act_Value, buf);
+    update_gauge(GAUGE_TCU_ACT, ui_Arc_TCU_TQ_Act, ui_Label_TCU_TQ_Act_Value, v, "%.0f", 450, 500, false, lv_color_hex(0xFF3366));
   else if (var == ui_Arc_Eng_TQ_Req)
-    lv_label_set_text(ui_Label_Eng_TQ_Req_Value, buf);
+    update_gauge(GAUGE_ENG_REQ, ui_Arc_Eng_TQ_Req, ui_Label_Eng_TQ_Req_Value, v, "%.0f", 450, 500, false, lv_color_hex(0x8A2BE2));
 }
 
 void ui_Screen4_update_animations(bool demo_enabled) {

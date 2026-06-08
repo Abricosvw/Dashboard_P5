@@ -30,6 +30,22 @@ extern "C" {
 #define SCREEN1_ARCS_COUNT 5
 #define SCREEN2_ARCS_COUNT 4
 
+// Gauge Units Enum
+typedef enum {
+  UNIT_KPA = 0,
+  UNIT_BAR,
+  UNIT_PSI,
+  UNIT_LAMBDA,
+  UNIT_AFR,
+  UNIT_VOLTS,
+  UNIT_CELSIUS,
+  UNIT_FAHRENHEIT,
+  UNIT_KMH,
+  UNIT_MPH,
+  UNIT_NM,
+  UNIT_PCT
+} gauge_unit_t;
+
 // Settings structure
 typedef struct {
   uint8_t touch_sensitivity_level;
@@ -40,6 +56,18 @@ typedef struct {
   bool screen2_arcs_enabled[SCREEN2_ARCS_COUNT];
   CanPlatform can_platform;
   char boot_sound_path[128];
+
+  // New Gauges Visibility
+  bool show_iat;
+  bool show_speed;
+  bool show_trans_temp;
+  bool show_afr;
+  bool show_egt;
+  bool show_knock_retard;
+  bool show_boost_act;
+
+  // Unit settings for each gauge
+  uint8_t gauge_units[26];
 } touch_settings_t;
 
 // Function declarations

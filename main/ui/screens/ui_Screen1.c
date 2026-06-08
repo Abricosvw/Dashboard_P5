@@ -47,34 +47,14 @@ static lv_anim_t anim_boost;
 // FUNCTIONS
 
 static void anim_value_cb(void *var, int32_t v) {
-  lv_arc_set_value((lv_obj_t *)var, v);
-
-  char buf[16];
-  snprintf(buf, sizeof(buf), "%d", (int)v);
-
   if (var == ui_Arc_MAP) {
-    lv_label_set_text(ui_Label_MAP_Value, buf);
+    update_gauge(GAUGE_MAP, ui_Arc_MAP, ui_Label_MAP_Value, v, "%.0f", 1500, 1800, false, lv_color_hex(0x00D4FF));
   } else if (var == ui_Arc_Wastegate) {
-    lv_label_set_text(ui_Label_Wastegate_Value, buf);
+    update_gauge(GAUGE_WASTEGATE, ui_Arc_Wastegate, ui_Label_Wastegate_Value, v, "%.1f", 110, 120, false, lv_color_hex(0x00D4FF));
   } else if (var == ui_Arc_TPS) {
-    lv_label_set_text(ui_Label_TPS_Value, buf);
+    update_gauge(GAUGE_TPS, ui_Arc_TPS, ui_Label_TPS_Value, v, "%.1f", 80, 90, false, lv_color_hex(0x00D4FF));
   } else if (var == ui_Arc_RPM) {
-    lv_label_set_text(ui_Label_RPM_Value, buf);
-
-    // Update Arc RPM color based on RPM range
-    if (v >= 0 && v < 5000) {
-      // 0-5000: голубой/cyan
-      lv_obj_set_style_arc_color(ui_Arc_RPM, lv_color_hex(0x00D4FF),
-                                 LV_PART_INDICATOR);
-    } else if (v >= 5000 && v < 6500) {
-      // 5000-6500: желтый
-      lv_obj_set_style_arc_color(ui_Arc_RPM, lv_color_hex(0xFFD700),
-                                 LV_PART_INDICATOR);
-    } else if (v >= 6500 && v <= 8000) {
-      // 6500-8000: красный
-      lv_obj_set_style_arc_color(ui_Arc_RPM, lv_color_hex(0xFF0000),
-                                 LV_PART_INDICATOR);
-    }
+    update_gauge(GAUGE_RPM, ui_Arc_RPM, ui_Label_RPM_Value, v, "%.0f", 7500, 9000, false, lv_color_hex(0x00D4FF));
 
     // Update TCU status based on RPM
     if (v > 5500) {
@@ -94,10 +74,8 @@ static void anim_value_cb(void *var, int32_t v) {
                                   0);
     }
   } else if (var == ui_Arc_Boost) {
-    lv_label_set_text(ui_Label_Boost_Value, buf);
+    update_gauge(GAUGE_BOOST, ui_Arc_Boost, ui_Label_Boost_Value, v, "%.0f", 200, 230, false, lv_color_hex(0x00D4FF));
   }
-  // Intake Air Temp обработка убрана
-  // Intake Air Temp обработка убрана
 }
 
 // Helper to get container of a gauge
@@ -117,7 +95,7 @@ void ui_Screen1_update_layout(void) {
 
 static void create_gauge(lv_obj_t *parent, lv_obj_t **arc, lv_obj_t **label,
                          const char *title, const char *unit, lv_color_t color,
-                         int32_t min_val, int32_t max_val, int x, int y) {
+                         int32_t min_val, int32_t max_val, int x, int y, gauge_id_t gauge_id) {
   // Container - возвращаем оригинальный размер 250x225 для лучших пропорций
   lv_obj_t *cont = lv_obj_create(parent);
   lv_obj_set_width(cont, 330);
@@ -132,6 +110,10 @@ static void create_gauge(lv_obj_t *parent, lv_obj_t **arc, lv_obj_t **label,
   lv_obj_set_style_radius(cont, 15, 0);
   lv_obj_set_style_pad_all(cont, 10, 0);
   lv_obj_set_style_shadow_width(cont, 0, 0); // Disable shadow for performance
+
+  // Add click support for unit switching
+  lv_obj_add_flag(cont, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(cont, ui_gauge_click_event_cb, LV_EVENT_CLICKED, (void*)(uintptr_t)gauge_id);
 
   // Title
   lv_obj_t *label_title = lv_label_create(cont);
@@ -201,20 +183,20 @@ void ui_Screen1_screen_init(void) {
   // Temporarily use smaller gauges for Portrait
   // Row 1
   create_gauge(ui_Screen1, &ui_Arc_MAP, &ui_Label_MAP_Value, "MAP Pressure",
-               "kPa", lv_color_hex(0x00D4FF), 100, 250, col1_x, row1_y);
+               "kPa", lv_color_hex(0x00D4FF), 100, 250, col1_x, row1_y, GAUGE_MAP);
   create_gauge(ui_Screen1, &ui_Arc_Wastegate, &ui_Label_Wastegate_Value,
                "Wastegate", "%", lv_color_hex(0x00D4FF), 0, 100, col2_x,
-               row1_y);
+               row1_y, GAUGE_WASTEGATE);
 
   // Row 2
   create_gauge(ui_Screen1, &ui_Arc_TPS, &ui_Label_TPS_Value, "TPS Position",
-               "%", lv_color_hex(0x00D4FF), 0, 100, col1_x, row2_y);
+               "%", lv_color_hex(0x00D4FF), 0, 100, col1_x, row2_y, GAUGE_TPS);
   create_gauge(ui_Screen1, &ui_Arc_RPM, &ui_Label_RPM_Value, "Engine RPM",
-               "RPM", lv_color_hex(0x00D4FF), 0, 8000, col2_x, row2_y);
+               "RPM", lv_color_hex(0x00D4FF), 0, 8000, col2_x, row2_y, GAUGE_RPM);
 
   // Row 3
   create_gauge(ui_Screen1, &ui_Arc_Boost, &ui_Label_Boost_Value, "Target Boost",
-               "kPa", lv_color_hex(0x00D4FF), 100, 250, col1_x, row3_y);
+               "kPa", lv_color_hex(0x00D4FF), 100, 250, col1_x, row3_y, GAUGE_BOOST);
 
   // Датчик 5: x=285 to 535, расстояние от датчика 4: 285-265=20px
 

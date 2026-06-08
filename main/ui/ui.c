@@ -4,6 +4,7 @@
 // Project name: Westgate Dashboard
 
 #include "ui.h"
+#include "ecu_data.h"
 #include "esp_log.h"
 #include "screens/ui_Screen2.h"
 #include "screens/ui_Screen3.h"
@@ -118,4 +119,116 @@ void ui_set_global_demo_mode(bool enabled) {
   ui_Screen2_update_animations(enabled);
   ui_Screen4_update_animations(enabled);
   ui_Screen5_update_animations(enabled);
+}
+
+static lv_obj_t *s_unit_popup = NULL;
+
+static void unit_popup_close_cb(lv_event_t *e) {
+  if (s_unit_popup) {
+    lv_obj_del_async(s_unit_popup);
+    s_unit_popup = NULL;
+  }
+}
+
+static void unit_select_cb(lv_event_t *e) {
+  gauge_id_t id = (gauge_id_t)(uintptr_t)lv_event_get_user_data(e);
+  lv_obj_t *btn = lv_event_get_target(e);
+  gauge_unit_t selected_unit = (gauge_unit_t)(uintptr_t)lv_obj_get_user_data(btn);
+
+  system_settings_t *settings = system_settings_get();
+  if (settings) {
+    settings->gauge_units[id] = selected_unit;
+    system_settings_save(settings);
+  }
+
+  // Close popup
+  unit_popup_close_cb(NULL);
+}
+
+void ui_gauge_click_event_cb(lv_event_t *e) {
+  gauge_id_t id = (gauge_id_t)(uintptr_t)lv_event_get_user_data(e);
+
+  if (s_unit_popup) {
+    lv_obj_del(s_unit_popup);
+    s_unit_popup = NULL;
+  }
+
+  // Check what units are available for this gauge
+  const char *opts[4] = {NULL};
+  gauge_unit_t units[4] = {0};
+  int opt_count = 0;
+
+  if (id == GAUGE_MAP || id == GAUGE_BOOST || id == GAUGE_OIL_PRESS || id == GAUGE_FUEL_PRESS || id == GAUGE_BOOST_ACT) {
+    opts[0] = "kPa";   units[0] = UNIT_KPA;
+    opts[1] = "Bar";   units[1] = UNIT_BAR;
+    opts[2] = "PSI";   units[2] = UNIT_PSI;
+    opt_count = 3;
+  } else if (id == GAUGE_AFR) {
+    opts[0] = "Lambda";   units[0] = UNIT_LAMBDA;
+    opts[1] = "AFR 14.7"; units[1] = UNIT_AFR;
+    opts[2] = "Volts";    units[2] = UNIT_VOLTS;
+    opt_count = 3;
+  } else if (id == GAUGE_OIL_TEMP || id == GAUGE_WATER_TEMP || id == GAUGE_IAT || id == GAUGE_TRANS_TEMP || id == GAUGE_EGT) {
+    opts[0] = "Celsius (C)";       units[0] = UNIT_CELSIUS;
+    opts[1] = "Fahrenheit (F)";   units[1] = UNIT_FAHRENHEIT;
+    opt_count = 2;
+  } else if (id == GAUGE_SPEED) {
+    opts[0] = "km/h";   units[0] = UNIT_KMH;
+    opts[1] = "mph";    units[1] = UNIT_MPH;
+    opt_count = 2;
+  } else if (id == GAUGE_TCU_REQ || id == GAUGE_TCU_ACT || id == GAUGE_ENG_REQ || id == GAUGE_ENG_ACT || id == GAUGE_LIMIT_TQ) {
+    opts[0] = "Newton Meters (Nm)"; units[0] = UNIT_NM;
+    opts[1] = "Percent (%)";        units[1] = UNIT_PCT;
+    opt_count = 2;
+  }
+
+  if (opt_count == 0) return; // No units for this gauge
+
+  // Create popup modal
+  lv_obj_t *current_scr = lv_scr_act();
+  s_unit_popup = lv_obj_create(current_scr);
+  lv_obj_set_size(s_unit_popup, 400, 320);
+  lv_obj_center(s_unit_popup);
+  lv_obj_set_style_bg_color(s_unit_popup, lv_color_hex(0x1a1a1a), 0);
+  lv_obj_set_style_bg_opa(s_unit_popup, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_color(s_unit_popup, lv_color_hex(0x00D4FF), 0);
+  lv_obj_set_style_border_width(s_unit_popup, 2, 0);
+  lv_obj_set_style_radius(s_unit_popup, 15, 0);
+  lv_obj_set_style_pad_all(s_unit_popup, 15, 0);
+  lv_obj_set_flex_flow(s_unit_popup, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(s_unit_popup, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_gap(s_unit_popup, 15, 0);
+
+  // Title
+  lv_obj_t *title = lv_label_create(s_unit_popup);
+  lv_label_set_text(title, "Select Unit");
+  lv_obj_set_style_text_color(title, lv_color_white(), 0);
+  lv_obj_set_style_text_font(title, &montserrat_20_en_ru, 0);
+
+  // Unit Options
+  for (int i = 0; i < opt_count; i++) {
+    lv_obj_t *btn = lv_btn_create(s_unit_popup);
+    lv_obj_set_size(btn, 280, 44);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_radius(btn, 8, 0);
+    lv_obj_add_event_cb(btn, unit_select_cb, LV_EVENT_CLICKED, (void*)(uintptr_t)id);
+    lv_obj_set_user_data(btn, (void*)(uintptr_t)units[i]);
+
+    lv_obj_t *lbl = lv_label_create(btn);
+    lv_label_set_text(lbl, opts[i]);
+    lv_obj_set_style_text_color(lbl, lv_color_white(), 0);
+    lv_obj_center(lbl);
+  }
+
+  // Cancel Button
+  lv_obj_t *cancel_btn = lv_btn_create(s_unit_popup);
+  lv_obj_set_size(cancel_btn, 140, 40);
+  lv_obj_set_style_bg_color(cancel_btn, lv_color_hex(0xFF3333), 0);
+  lv_obj_set_style_radius(cancel_btn, 8, 0);
+  lv_obj_add_event_cb(cancel_btn, unit_popup_close_cb, LV_EVENT_CLICKED, NULL);
+
+  lv_obj_t *cancel_lbl = lv_label_create(cancel_btn);
+  lv_label_set_text(cancel_lbl, "Cancel");
+  lv_obj_set_style_text_color(cancel_lbl, lv_color_white(), 0);
+  lv_obj_center(cancel_lbl);
 }

@@ -140,6 +140,14 @@ void ui_update_global_layout(void) {
 
       {&ui_Arc_Eng_TQ_Act, &settings->show_eng_act},
       {&ui_Arc_Limit_TQ, &settings->show_limit_tq},
+
+      {&ui_Arc_IAT, &settings->show_iat},
+      {&ui_Arc_Speed, &settings->show_speed},
+      {&ui_Arc_Trans_Temp, &settings->show_trans_temp},
+      {&ui_Arc_AFR, &settings->show_afr},
+      {&ui_Arc_EGT, &settings->show_egt},
+      {&ui_Arc_Knock_Retard, &settings->show_knock_retard},
+      {&ui_Arc_Boost_Act, &settings->show_boost_act},
   };
   int total_gauges = sizeof(gauges) / sizeof(gauges[0]);
 

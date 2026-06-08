@@ -39,6 +39,13 @@ typedef struct {
   int8_t gear;              // Gear Position
   int8_t selector_position; // Selector Lever Position
 
+  // New Powertrain Metrics
+  float trans_temp;
+  float afr_val;
+  float afr_target;
+  float egt_temp;
+  float knock_retard;
+
   // System
   uint64_t timestamp;
 } ecu_data_t;
@@ -78,6 +85,18 @@ typedef struct {
   bool show_eng_act;
   bool show_limit_tq;
 
+  // New Gauges
+  bool show_iat;
+  bool show_speed;
+  bool show_trans_temp;
+  bool show_afr;
+  bool show_egt;
+  bool show_knock_retard;
+  bool show_boost_act;
+
+  // Unit settings for each gauge
+  uint8_t gauge_units[26];
+
   // Dynamic Layout Settings
   int active_gauge_ids[24]; // Ordered list of enabled gauge IDs
   int active_gauge_count;   // Number of active gauges
@@ -115,6 +134,15 @@ typedef enum {
   // Screen 5 Gauges
   GAUGE_ENG_ACT,
   GAUGE_LIMIT_TQ,
+
+  // New Gauges
+  GAUGE_IAT,
+  GAUGE_SPEED,
+  GAUGE_TRANS_TEMP,
+  GAUGE_AFR,
+  GAUGE_EGT,
+  GAUGE_KNOCK_RETARD,
+  GAUGE_BOOST_ACT,
 
   GAUGE_MAX
 } gauge_id_t;

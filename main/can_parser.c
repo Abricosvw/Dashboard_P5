@@ -41,10 +41,10 @@ static void parse_vw_pq35_46(const twai_message_t *message,
     ecu_data->eng_trg_nm = (message->data[7] * 0.39f) * (g_max_torque_nm / 100.0f);  // Requested Torque in Nm
     break;
 
-  case 0x288: // Motor_2: Coolant (PQ35/46 uses this for Coolant, PQ25 might
-              // differ)
+  case 0x288: // Motor_2: Coolant & Timing Retard (Knock)
     ecu_data->clt_temp = (message->data[1] * 0.75f) - 48.0f;
     ecu_data->limit_tq_nm = (message->data[6] * 0.39f) * (g_max_torque_nm / 100.0f);
+    ecu_data->knock_retard = message->data[7] * 0.375f; // ZW Ruecknahme in degrees
     break;
 
   case 0x380: // Motor_3: IAT
@@ -70,8 +70,18 @@ static void parse_vw_pq35_46(const twai_message_t *message,
     ecu_data->tcu_tq_req_nm = (message->data[3] * 0.39f) * (g_max_torque_nm / 100.0f); // Inneres_Sollmotormoment in Nm
     break;
 
-  case 0x488: // Motor_6: TCU Torque Actual
+  case 0x488: // Motor_6: TCU Torque Actual & EGT
     ecu_data->tcu_tq_act_nm = (message->data[2] * 0.39f) * (g_max_torque_nm / 100.0f); // Istmoment_Getriebe in Nm
+    ecu_data->egt_temp = ((message->data[4] << 8) | message->data[5]) * 0.1f - 100.0f; // EGT in C
+    break;
+
+  case 0x2C6: // DSG Oil Temp
+    ecu_data->trans_temp = message->data[0] - 40.0f;
+    break;
+
+  case 0x480: // Motor_5: Lambda Target / Actual
+    ecu_data->afr_val = message->data[0] * 0.0048f; // Actual Lambda
+    ecu_data->afr_target = message->data[4] * 0.0048f; // Target Lambda
     break;
 
   case 0x1A0: // Speed source (Bremse_1) - ABS Wheel Speed

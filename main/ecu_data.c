@@ -147,6 +147,13 @@ void ecu_data_simulate(ecu_data_t *data) {
   data->iat_temp = 30.0f + 10.0f * sin(sim_time * 0.2f);
   data->vehicle_speed = data->engine_rpm * 0.04f; // Fake speed from RPM
 
+  // Simulate new powertrain parameters
+  data->trans_temp = 80.0f + 5.0f * sin(sim_time * 0.1f);
+  data->afr_target = 1.0f - 0.12f * (data->tps_position / 100.0f);
+  data->afr_val = data->afr_target + 0.02f * sin(sim_time * 2.0f);
+  data->egt_temp = 350.0f + 250.0f * (data->engine_rpm / 3800.0f) + 50.0f * sin(sim_time * 0.5f);
+  data->knock_retard = (data->engine_rpm > 3000.0f) ? (float)(fmod(sim_time, 3.0f) > 2.0f ? 2.5f : 0.0f) : 0.0f;
+
   data->timestamp = esp_timer_get_time() / 1000;
 }
 

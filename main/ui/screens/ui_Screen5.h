@@ -23,6 +23,22 @@ extern lv_obj_t *ui_Label_Eng_TQ_Act_Value;
 extern lv_obj_t *ui_Arc_Limit_TQ;
 extern lv_obj_t *ui_Label_Limit_TQ_Value;
 
+// New Gauges
+extern lv_obj_t *ui_Arc_IAT;
+extern lv_obj_t *ui_Label_IAT_Value;
+extern lv_obj_t *ui_Arc_Speed;
+extern lv_obj_t *ui_Label_Speed_Value;
+extern lv_obj_t *ui_Arc_Trans_Temp;
+extern lv_obj_t *ui_Label_Trans_Temp_Value;
+extern lv_obj_t *ui_Arc_AFR;
+extern lv_obj_t *ui_Label_AFR_Value;
+extern lv_obj_t *ui_Arc_EGT;
+extern lv_obj_t *ui_Label_EGT_Value;
+extern lv_obj_t *ui_Arc_Knock_Retard;
+extern lv_obj_t *ui_Label_Knock_Retard_Value;
+extern lv_obj_t *ui_Arc_Boost_Act;
+extern lv_obj_t *ui_Label_Boost_Act_Value;
+
 // Arc visibility control
 void ui_Screen5_update_arc_visibility(int arc_index, bool visible);
 

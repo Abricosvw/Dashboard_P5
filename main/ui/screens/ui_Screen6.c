@@ -99,6 +99,15 @@ static bool show_eng_req = true;
 static bool show_eng_act = true;
 static bool show_limit_tq = true;
 
+// New Powertrain Gauges Settings
+static bool show_iat = true;
+static bool show_speed = true;
+static bool show_trans_temp = true;
+static bool show_afr = true;
+static bool show_egt = true;
+static bool show_knock_retard = true;
+static bool show_boost_act = true;
+
 // Function prototypes
 static void save_settings_event_cb(lv_event_t *e);
 static void reset_settings_event_cb(lv_event_t *e);
@@ -287,6 +296,20 @@ static gauge_id_t get_gauge_id_from_text(const char *txt) {
     return GAUGE_ENG_ACT;
   if (strcmp(txt, "Limit TQ") == 0)
     return GAUGE_LIMIT_TQ;
+  if (strcmp(txt, "IAT") == 0)
+    return GAUGE_IAT;
+  if (strcmp(txt, "Speed") == 0)
+    return GAUGE_SPEED;
+  if (strcmp(txt, "Trans Temp") == 0)
+    return GAUGE_TRANS_TEMP;
+  if (strcmp(txt, "Lambda/AFR") == 0)
+    return GAUGE_AFR;
+  if (strcmp(txt, "EGT") == 0)
+    return GAUGE_EGT;
+  if (strcmp(txt, "Knock") == 0)
+    return GAUGE_KNOCK_RETARD;
+  if (strcmp(txt, "Act Boost") == 0)
+    return GAUGE_BOOST_ACT;
 
   return GAUGE_NONE;
 }
@@ -379,6 +402,20 @@ static void gauge_checkbox_event_cb(lv_event_t *e) {
     show_eng_act = checked;
   else if (strcmp(txt, "Limit TQ") == 0)
     show_limit_tq = checked;
+  else if (strcmp(txt, "IAT") == 0)
+    show_iat = checked;
+  else if (strcmp(txt, "Speed") == 0)
+    show_speed = checked;
+  else if (strcmp(txt, "Trans Temp") == 0)
+    show_trans_temp = checked;
+  else if (strcmp(txt, "Lambda/AFR") == 0)
+    show_afr = checked;
+  else if (strcmp(txt, "EGT") == 0)
+    show_egt = checked;
+  else if (strcmp(txt, "Knock") == 0)
+    show_knock_retard = checked;
+  else if (strcmp(txt, "Act Boost") == 0)
+    show_boost_act = checked;
 
   settings_modified = 1;
   ESP_LOGI("SCREEN6", "Gauge %s toggled to: %s", txt, checked ? "ON" : "OFF");
@@ -427,6 +464,20 @@ static void gauge_checkbox_event_cb(lv_event_t *e) {
       settings->show_eng_act = checked;
     else if (strcmp(txt, "Limit TQ") == 0)
       settings->show_limit_tq = checked;
+    else if (strcmp(txt, "IAT") == 0)
+      settings->show_iat = checked;
+    else if (strcmp(txt, "Speed") == 0)
+      settings->show_speed = checked;
+    else if (strcmp(txt, "Trans Temp") == 0)
+      settings->show_trans_temp = checked;
+    else if (strcmp(txt, "Lambda/AFR") == 0)
+      settings->show_afr = checked;
+    else if (strcmp(txt, "EGT") == 0)
+      settings->show_egt = checked;
+    else if (strcmp(txt, "Knock") == 0)
+      settings->show_knock_retard = checked;
+    else if (strcmp(txt, "Act Boost") == 0)
+      settings->show_boost_act = checked;
 
     // Update ordered list
     gauge_id_t id = get_gauge_id_from_text(txt);
@@ -901,9 +952,10 @@ void ui_Screen6_screen_init(void) {
       "Boost",      "TCU",        "Screen 2:", "Oil Press", "Oil Temp",
       "Water Temp", "Fuel Press", "Battery",   "Screen 4:", "Pedal",
       "WG Pos",     "BOV",        "TCU Req",   "TCU Act",   "Eng Req",
-      "Screen 5:",  "Eng Act",    "Limit TQ"};
+      "Screen 5:",  "Eng Act",    "Limit TQ",  "IAT",       "Speed",
+      "Trans Temp", "Lambda/AFR", "EGT",       "Knock",     "Act Boost"};
 
-  for (int i = 0; i < 23; i++) {
+  for (int i = 0; i < 30; i++) {
     if (strchr(gauges[i], ':')) {
       lv_obj_t *header = lv_label_create(ui_Container_GaugeList);
       lv_label_set_text(header, gauges[i]);
@@ -1122,6 +1174,13 @@ void ui_Screen6_load_settings(void) {
 
     show_eng_act = settings->show_eng_act;
     show_limit_tq = settings->show_limit_tq;
+    show_iat = settings->show_iat;
+    show_speed = settings->show_speed;
+    show_trans_temp = settings->show_trans_temp;
+    show_afr = settings->show_afr;
+    show_egt = settings->show_egt;
+    show_knock_retard = settings->show_knock_retard;
+    show_boost_act = settings->show_boost_act;
 
     // Legacy support: If count is 0 but booleans are true, populate list in
     // default order
@@ -1167,6 +1226,20 @@ void ui_Screen6_load_settings(void) {
         add_gauge_to_list(settings, GAUGE_ENG_ACT);
       if (show_limit_tq)
         add_gauge_to_list(settings, GAUGE_LIMIT_TQ);
+      if (show_iat)
+        add_gauge_to_list(settings, GAUGE_IAT);
+      if (show_speed)
+        add_gauge_to_list(settings, GAUGE_SPEED);
+      if (show_trans_temp)
+        add_gauge_to_list(settings, GAUGE_TRANS_TEMP);
+      if (show_afr)
+        add_gauge_to_list(settings, GAUGE_AFR);
+      if (show_egt)
+        add_gauge_to_list(settings, GAUGE_EGT);
+      if (show_knock_retard)
+        add_gauge_to_list(settings, GAUGE_KNOCK_RETARD);
+      if (show_boost_act)
+        add_gauge_to_list(settings, GAUGE_BOOST_ACT);
     }
   }
 
@@ -1204,6 +1277,13 @@ void ui_Screen6_save_settings(void) {
 
     settings->show_eng_act = show_eng_act;
     settings->show_limit_tq = show_limit_tq;
+    settings->show_iat = show_iat;
+    settings->show_speed = show_speed;
+    settings->show_trans_temp = show_trans_temp;
+    settings->show_afr = show_afr;
+    settings->show_egt = show_egt;
+    settings->show_knock_retard = show_knock_retard;
+    settings->show_boost_act = show_boost_act;
 
     // system_settings_save(settings); // Removed redundant call
   }
@@ -1279,6 +1359,20 @@ void ui_Screen6_update_button_states(void) {
         // ... (abbreviated for brevity, tool handles context) ...
         else if (strcmp(txt, "Limit TQ") == 0)
           should_check = show_limit_tq;
+        else if (strcmp(txt, "IAT") == 0)
+          should_check = show_iat;
+        else if (strcmp(txt, "Speed") == 0)
+          should_check = show_speed;
+        else if (strcmp(txt, "Trans Temp") == 0)
+          should_check = show_trans_temp;
+        else if (strcmp(txt, "Lambda/AFR") == 0)
+          should_check = show_afr;
+        else if (strcmp(txt, "EGT") == 0)
+          should_check = show_egt;
+        else if (strcmp(txt, "Knock") == 0)
+          should_check = show_knock_retard;
+        else if (strcmp(txt, "Act Boost") == 0)
+          should_check = show_boost_act;
         else {
           // Fallback to check full list if abbreviated
           if (strcmp(txt, "Wastegate") == 0)

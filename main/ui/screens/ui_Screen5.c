@@ -19,12 +19,34 @@ lv_obj_t *ui_Label_Eng_TQ_Act_Value;
 lv_obj_t *ui_Arc_Limit_TQ;
 lv_obj_t *ui_Label_Limit_TQ_Value;
 
+// New Gauges
+lv_obj_t *ui_Arc_IAT = NULL;
+lv_obj_t *ui_Label_IAT_Value = NULL;
+lv_obj_t *ui_Arc_Speed = NULL;
+lv_obj_t *ui_Label_Speed_Value = NULL;
+lv_obj_t *ui_Arc_Trans_Temp = NULL;
+lv_obj_t *ui_Label_Trans_Temp_Value = NULL;
+lv_obj_t *ui_Arc_AFR = NULL;
+lv_obj_t *ui_Label_AFR_Value = NULL;
+lv_obj_t *ui_Arc_EGT = NULL;
+lv_obj_t *ui_Label_EGT_Value = NULL;
+lv_obj_t *ui_Arc_Knock_Retard = NULL;
+lv_obj_t *ui_Label_Knock_Retard_Value = NULL;
+lv_obj_t *ui_Arc_Boost_Act = NULL;
+lv_obj_t *ui_Label_Boost_Act_Value = NULL;
+
 // Animation variables
 static lv_anim_t anim_eng_tq_act;
 static lv_anim_t anim_limit_tq;
+static lv_anim_t anim_iat;
+static lv_anim_t anim_speed;
+static lv_anim_t anim_trans_temp;
+static lv_anim_t anim_afr;
+static lv_anim_t anim_egt;
+static lv_anim_t anim_knock_retard;
+static lv_anim_t anim_boost_act;
 
 // Function prototypes
-
 static void anim_value_cb_screen5(void *var, int32_t v);
 
 // Helper to get container of a gauge
@@ -44,7 +66,7 @@ void ui_Screen5_update_layout(void) {
 // Helper function to create a gauge
 static void create_gauge(lv_obj_t *parent, lv_obj_t **arc, lv_obj_t **label,
                          const char *title, const char *unit, lv_color_t color,
-                         int32_t min_val, int32_t max_val, int x, int y) {
+                         int32_t min_val, int32_t max_val, int x, int y, gauge_id_t gauge_id) {
   lv_obj_t *cont = lv_obj_create(parent);
   lv_obj_set_width(cont, 330);
   lv_obj_set_height(cont, 360);
@@ -58,6 +80,10 @@ static void create_gauge(lv_obj_t *parent, lv_obj_t **arc, lv_obj_t **label,
   lv_obj_set_style_radius(cont, 15, 0);
   lv_obj_set_style_pad_all(cont, 10, 0);
   lv_obj_set_style_shadow_width(cont, 0, 0); // Disable shadow for performance
+
+  // Add click support for unit switching
+  lv_obj_add_flag(cont, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(cont, ui_gauge_click_event_cb, LV_EVENT_CLICKED, (void*)(uintptr_t)gauge_id);
 
   lv_obj_t *label_title = lv_label_create(cont);
   lv_label_set_text(label_title, title);
@@ -101,11 +127,29 @@ void ui_Screen5_screen_init(void) {
 
   // Title removed as per user request to provide more space.
 
-  // Row 1 (y=40) - Centered for 720 width
+  // Base Gauges
   create_gauge(ui_Screen5, &ui_Arc_Eng_TQ_Act, &ui_Label_Eng_TQ_Act_Value,
-               "Eng Tq Act", "Nm", lv_color_hex(0x00D4FF), 0, 500, 20, 60);
+               "Eng Tq Act", "Nm", lv_color_hex(0x00D4FF), 0, 500, 20, 60, GAUGE_ENG_ACT);
   create_gauge(ui_Screen5, &ui_Arc_Limit_TQ, &ui_Label_Limit_TQ_Value,
-               "Torque Limit", "Nm", lv_color_hex(0x00FF88), 0, 500, 370, 60);
+               "Torque Limit", "Nm", lv_color_hex(0x00FF88), 0, 500, 370, 60, GAUGE_LIMIT_TQ);
+
+  // New Gauges instantiated on Screen 5 (will reflow dynamically)
+  create_gauge(ui_Screen5, &ui_Arc_IAT, &ui_Label_IAT_Value, "Intake Temp",
+               "°C", lv_color_hex(0xFF8800), 0, 100, 20, 440, GAUGE_IAT);
+  create_gauge(ui_Screen5, &ui_Arc_Speed, &ui_Label_Speed_Value, "Vehicle Speed",
+               "km/h", lv_color_hex(0x00FFD4), 0, 260, 370, 440, GAUGE_SPEED);
+
+  create_gauge(ui_Screen5, &ui_Arc_Trans_Temp, &ui_Label_Trans_Temp_Value, "Trans Temp",
+               "°C", lv_color_hex(0xFF5500), 60, 140, 20, 820, GAUGE_TRANS_TEMP);
+  create_gauge(ui_Screen5, &ui_Arc_AFR, &ui_Label_AFR_Value, "Lambda / AFR",
+               "λ", lv_color_hex(0x00FF88), 60, 140, 370, 820, GAUGE_AFR);
+
+  create_gauge(ui_Screen5, &ui_Arc_EGT, &ui_Label_EGT_Value, "EGT",
+               "°C", lv_color_hex(0xFF3300), 200, 1000, 20, 1200, GAUGE_EGT);
+  create_gauge(ui_Screen5, &ui_Arc_Knock_Retard, &ui_Label_Knock_Retard_Value, "Knock Retard",
+               "°", lv_color_hex(0xFFCC00), 0, 120, 370, 1200, GAUGE_KNOCK_RETARD);
+  create_gauge(ui_Screen5, &ui_Arc_Boost_Act, &ui_Label_Boost_Act_Value, "Actual Boost",
+               "kPa", lv_color_hex(0x00D4FF), 100, 250, 20, 1580, GAUGE_BOOST_ACT);
 
   // Apply initial layout
   ui_Screen5_update_layout();
@@ -127,6 +171,62 @@ void ui_Screen5_screen_init(void) {
   lv_anim_set_repeat_count(&anim_limit_tq, LV_ANIM_REPEAT_INFINITE);
   lv_anim_set_exec_cb(&anim_limit_tq, anim_value_cb_screen5);
 
+  lv_anim_init(&anim_iat);
+  lv_anim_set_var(&anim_iat, ui_Arc_IAT);
+  lv_anim_set_values(&anim_iat, 0, 100);
+  lv_anim_set_time(&anim_iat, 3000);
+  lv_anim_set_playback_time(&anim_iat, 3000);
+  lv_anim_set_repeat_count(&anim_iat, LV_ANIM_REPEAT_INFINITE);
+  lv_anim_set_exec_cb(&anim_iat, anim_value_cb_screen5);
+
+  lv_anim_init(&anim_speed);
+  lv_anim_set_var(&anim_speed, ui_Arc_Speed);
+  lv_anim_set_values(&anim_speed, 0, 260);
+  lv_anim_set_time(&anim_speed, 4000);
+  lv_anim_set_playback_time(&anim_speed, 4000);
+  lv_anim_set_repeat_count(&anim_speed, LV_ANIM_REPEAT_INFINITE);
+  lv_anim_set_exec_cb(&anim_speed, anim_value_cb_screen5);
+
+  lv_anim_init(&anim_trans_temp);
+  lv_anim_set_var(&anim_trans_temp, ui_Arc_Trans_Temp);
+  lv_anim_set_values(&anim_trans_temp, 60, 140);
+  lv_anim_set_time(&anim_trans_temp, 5000);
+  lv_anim_set_playback_time(&anim_trans_temp, 5000);
+  lv_anim_set_repeat_count(&anim_trans_temp, LV_ANIM_REPEAT_INFINITE);
+  lv_anim_set_exec_cb(&anim_trans_temp, anim_value_cb_screen5);
+
+  lv_anim_init(&anim_afr);
+  lv_anim_set_var(&anim_afr, ui_Arc_AFR);
+  lv_anim_set_values(&anim_afr, 60, 140);
+  lv_anim_set_time(&anim_afr, 2500);
+  lv_anim_set_playback_time(&anim_afr, 2500);
+  lv_anim_set_repeat_count(&anim_afr, LV_ANIM_REPEAT_INFINITE);
+  lv_anim_set_exec_cb(&anim_afr, anim_value_cb_screen5);
+
+  lv_anim_init(&anim_egt);
+  lv_anim_set_var(&anim_egt, ui_Arc_EGT);
+  lv_anim_set_values(&anim_egt, 200, 1000);
+  lv_anim_set_time(&anim_egt, 6000);
+  lv_anim_set_playback_time(&anim_egt, 6000);
+  lv_anim_set_repeat_count(&anim_egt, LV_ANIM_REPEAT_INFINITE);
+  lv_anim_set_exec_cb(&anim_egt, anim_value_cb_screen5);
+
+  lv_anim_init(&anim_knock_retard);
+  lv_anim_set_var(&anim_knock_retard, ui_Arc_Knock_Retard);
+  lv_anim_set_values(&anim_knock_retard, 0, 120);
+  lv_anim_set_time(&anim_knock_retard, 3000);
+  lv_anim_set_playback_time(&anim_knock_retard, 3000);
+  lv_anim_set_repeat_count(&anim_knock_retard, LV_ANIM_REPEAT_INFINITE);
+  lv_anim_set_exec_cb(&anim_knock_retard, anim_value_cb_screen5);
+
+  lv_anim_init(&anim_boost_act);
+  lv_anim_set_var(&anim_boost_act, ui_Arc_Boost_Act);
+  lv_anim_set_values(&anim_boost_act, 100, 250);
+  lv_anim_set_time(&anim_boost_act, 3500);
+  lv_anim_set_playback_time(&anim_boost_act, 3500);
+  lv_anim_set_repeat_count(&anim_boost_act, LV_ANIM_REPEAT_INFINITE);
+  lv_anim_set_exec_cb(&anim_boost_act, anim_value_cb_screen5);
+
   if (demo_mode_get_enabled()) {
     ui_Screen5_update_animations(true);
   }
@@ -138,24 +238,47 @@ void ui_Screen5_screen_init(void) {
 }
 
 static void anim_value_cb_screen5(void *var, int32_t v) {
-  lv_arc_set_value((lv_obj_t *)var, v);
-
-  char buf[16];
-  snprintf(buf, sizeof(buf), "%d", (int)v);
-
   if (var == ui_Arc_Eng_TQ_Act)
-    lv_label_set_text(ui_Label_Eng_TQ_Act_Value, buf);
+    update_gauge(GAUGE_ENG_ACT, ui_Arc_Eng_TQ_Act, ui_Label_Eng_TQ_Act_Value, v, "%.0f", 450, 500, false, lv_color_hex(0x00D4FF));
   else if (var == ui_Arc_Limit_TQ)
-    lv_label_set_text(ui_Label_Limit_TQ_Value, buf);
+    update_gauge(GAUGE_LIMIT_TQ, ui_Arc_Limit_TQ, ui_Label_Limit_TQ_Value, v, "%.0f", 450, 500, false, lv_color_hex(0x00FF88));
+  else if (var == ui_Arc_IAT)
+    update_gauge(GAUGE_IAT, ui_Arc_IAT, ui_Label_IAT_Value, v, "%.0f", 70, 90, false, lv_color_hex(0xFF8800));
+  else if (var == ui_Arc_Speed)
+    update_gauge(GAUGE_SPEED, ui_Arc_Speed, ui_Label_Speed_Value, v, "%.0f", 200, 240, false, lv_color_hex(0x00FFD4));
+  else if (var == ui_Arc_Trans_Temp)
+    update_gauge(GAUGE_TRANS_TEMP, ui_Arc_Trans_Temp, ui_Label_Trans_Temp_Value, v, "%.0f", 100, 115, false, lv_color_hex(0xFF5500));
+  else if (var == ui_Arc_AFR)
+    update_gauge(GAUGE_AFR, ui_Arc_AFR, ui_Label_AFR_Value, v / 100.0f, "%.2f", 1.15f, 1.25f, false, lv_color_hex(0x00FF88));
+  else if (var == ui_Arc_EGT)
+    update_gauge(GAUGE_EGT, ui_Arc_EGT, ui_Label_EGT_Value, v, "%.0f", 850, 950, false, lv_color_hex(0xFF3300));
+  else if (var == ui_Arc_Knock_Retard)
+    update_gauge(GAUGE_KNOCK_RETARD, ui_Arc_Knock_Retard, ui_Label_Knock_Retard_Value, v / 10.0f, "%.1f", 3.0f, 6.0f, false, lv_color_hex(0xFFCC00));
+  else if (var == ui_Arc_Boost_Act)
+    update_gauge(GAUGE_BOOST_ACT, ui_Arc_Boost_Act, ui_Label_Boost_Act_Value, v, "%.0f", 200, 230, false, lv_color_hex(0x00D4FF));
 }
 
 void ui_Screen5_update_animations(bool demo_enabled) {
   if (demo_enabled) {
     lv_anim_start(&anim_eng_tq_act);
     lv_anim_start(&anim_limit_tq);
+    lv_anim_start(&anim_iat);
+    lv_anim_start(&anim_speed);
+    lv_anim_start(&anim_trans_temp);
+    lv_anim_start(&anim_afr);
+    lv_anim_start(&anim_egt);
+    lv_anim_start(&anim_knock_retard);
+    lv_anim_start(&anim_boost_act);
   } else {
     lv_anim_del(ui_Arc_Eng_TQ_Act, anim_value_cb_screen5);
     lv_anim_del(ui_Arc_Limit_TQ, anim_value_cb_screen5);
+    lv_anim_del(ui_Arc_IAT, anim_value_cb_screen5);
+    lv_anim_del(ui_Arc_Speed, anim_value_cb_screen5);
+    lv_anim_del(ui_Arc_Trans_Temp, anim_value_cb_screen5);
+    lv_anim_del(ui_Arc_AFR, anim_value_cb_screen5);
+    lv_anim_del(ui_Arc_EGT, anim_value_cb_screen5);
+    lv_anim_del(ui_Arc_Knock_Retard, anim_value_cb_screen5);
+    lv_anim_del(ui_Arc_Boost_Act, anim_value_cb_screen5);
   }
 }
 
@@ -164,15 +287,42 @@ void ui_Screen5_update_arc_visibility(int arc_index, bool visible) {
   lv_obj_t *arc_container = NULL;
   const char *arc_name = NULL;
 
-  // Map arc index to container and name
   switch (arc_index) {
-  case 0: // Eng TQ Act
+  case 0:
     arc_container = lv_obj_get_parent(ui_Arc_Eng_TQ_Act);
     arc_name = "Eng TQ Act";
     break;
-  case 1: // Limit TQ
+  case 1:
     arc_container = lv_obj_get_parent(ui_Arc_Limit_TQ);
     arc_name = "Limit TQ";
+    break;
+  case 2:
+    arc_container = lv_obj_get_parent(ui_Arc_IAT);
+    arc_name = "Intake Temp";
+    break;
+  case 3:
+    arc_container = lv_obj_get_parent(ui_Arc_Speed);
+    arc_name = "Vehicle Speed";
+    break;
+  case 4:
+    arc_container = lv_obj_get_parent(ui_Arc_Trans_Temp);
+    arc_name = "Trans Temp";
+    break;
+  case 5:
+    arc_container = lv_obj_get_parent(ui_Arc_AFR);
+    arc_name = "Lambda / AFR";
+    break;
+  case 6:
+    arc_container = lv_obj_get_parent(ui_Arc_EGT);
+    arc_name = "EGT";
+    break;
+  case 7:
+    arc_container = lv_obj_get_parent(ui_Arc_Knock_Retard);
+    arc_name = "Knock Retard";
+    break;
+  case 8:
+    arc_container = lv_obj_get_parent(ui_Arc_Boost_Act);
+    arc_name = "Actual Boost";
     break;
   default:
     ESP_LOGW("SCREEN5", "Invalid arc index: %d", arc_index);
