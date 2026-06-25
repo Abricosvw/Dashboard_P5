@@ -554,7 +554,7 @@ void ui_Screen7_screen_init(void) {
   status_label = lv_label_create(ui_Screen7);
   lv_label_set_text(status_label, "AI: System Ready (Gemini)");
   lv_obj_set_size(status_label, 560, 30);
-  lv_obj_align(status_label, LV_ALIGN_BOTTOM_MID, 0, -30);
+  lv_obj_set_pos(status_label, (SCR_W - 560) / 2, input_y + INPUT_H + 6);
   lv_obj_set_style_text_color(status_label, lv_color_hex(CLR_TEXT_DIM), 0);
   lv_obj_set_style_text_font(status_label, &montserrat_20_en_ru, 0);
   lv_label_set_long_mode(status_label, LV_LABEL_LONG_SCROLL_CIRCULAR);

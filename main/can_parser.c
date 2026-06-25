@@ -53,7 +53,7 @@ static void parse_vw_pq35_46(const twai_message_t *message,
     break;
 
   case 0x588: // Motor_7: Oil Temp & Boost
-    ecu_data->map_kpa = (message->data[4] * 0.01f) * 100.0f; // Bar -> kPa
+    ecu_data->map_kpa = message->data[4] * 2.0f; // K-Matrix factor: 0.02 Bar/unit -> 2.0 kPa/unit
     ecu_data->oil_temp = (message->data[7] * 1.0f) - 60.0f;
     break;
 
@@ -100,6 +100,16 @@ static void parse_vw_pq35_46(const twai_message_t *message,
   case 0x394: // BOV (Custom)
     ecu_data->bov_percent = (message->data[0] * 50.0f) / 255.0f;
     break;
+
+  case 0x420: // Kombi_2: Outside Temperature
+  {
+    system_settings_t *settings = system_settings_get();
+    if (settings && !settings->send_ambient_temp_to_can) {
+      if (message->data[2] != 0xFF) {
+        ecu_data->ambient_temp = message->data[2] * 0.5f - 50.0f;
+      }
+    }
+  } break;
 
   default:
     break;
@@ -198,6 +208,36 @@ static void parse_vw_mqb(const twai_message_t *message, ecu_data_t *ecu_data) {
   }
 }
 
+// 6. rusEFI microRusEFI (MRE)
+static void parse_rusefi_mre(const twai_message_t *message, ecu_data_t *ecu_data) {
+  switch (message->identifier) {
+  case 0x200: // BASE0: Status, Gear, Warnings
+    ecu_data->gear = (int8_t)message->data[5]; // CurrentGear
+    break;
+
+  case 0x201: // BASE1: RPM, Speed
+    ecu_data->engine_rpm = (float)(message->data[0] | (message->data[1] << 8)); // scale=1
+    ecu_data->vehicle_speed = (float)message->data[6]; // scale=1
+    break;
+
+  case 0x202: // BASE2: PPS, TPS1, TPS2, Wastegate
+    ecu_data->abs_pedal_pos = (float)((int16_t)(message->data[0] | (message->data[1] << 8))) * 0.01f;
+    ecu_data->tps_position  = (float)((int16_t)(message->data[2] | (message->data[3] << 8))) * 0.01f;
+    ecu_data->wg_pos_percent = (float)((int16_t)(message->data[6] | (message->data[7] << 8))) * 0.01f;
+    break;
+
+  case 0x203: // BASE3: MAP, CLT, IAT, OilTemp
+    ecu_data->map_kpa = (float)(message->data[0] | (message->data[1] << 8)) * 0.03333f; // scale=0.03333
+    ecu_data->clt_temp = (float)message->data[2] - 40.0f; // offset=-40
+    ecu_data->iat_temp = (float)message->data[3] - 40.0f; // offset=-40
+    ecu_data->oil_temp = (float)message->data[4] - 40.0f; // AuxTemp1 offset=-40 (mapped to oil_temp)
+    break;
+
+  default:
+    break;
+  }
+}
+
 // --- Main Dispatcher ---
 
 void can_parser_set_platform(CanPlatform platform) {
@@ -209,34 +249,49 @@ void can_parser_set_platform(CanPlatform platform) {
 
 CanPlatform can_parser_get_platform(void) { return g_current_platform; }
 
+typedef struct {
+  const twai_message_t *msg;
+  void (*parse_fn)(const twai_message_t *, ecu_data_t *);
+} parse_tx_ctx_t;
+
+static void parse_transaction_wrapper(ecu_data_t *state, void *ctx) {
+  parse_tx_ctx_t *tx = (parse_tx_ctx_t *)ctx;
+  tx->parse_fn(tx->msg, state);
+}
+
 void parse_can_message(const twai_message_t *message) {
   if (!message)
     return;
 
-  ecu_data_t ecu_data;
-  ecu_data_get_copy(&ecu_data);
+  void (*parse_fn)(const twai_message_t *, ecu_data_t *) = NULL;
 
   switch (g_current_platform) {
   case PLATFORM_VW_PQ35_46:
-    parse_vw_pq35_46(message, &ecu_data);
+    parse_fn = parse_vw_pq35_46;
     break;
   case PLATFORM_VW_PQ25:
-    parse_vw_pq25(message, &ecu_data);
+    parse_fn = parse_vw_pq25;
     break;
   case PLATFORM_BMW_E9X:
   case PLATFORM_BMW_E46:
-    parse_bmw_e_series(message, &ecu_data);
+    parse_fn = parse_bmw_e_series;
     break;
   case PLATFORM_BMW_F_SERIES:
-    parse_bmw_f_series(message, &ecu_data);
+    parse_fn = parse_bmw_f_series;
     break;
   case PLATFORM_VW_MQB:
-    parse_vw_mqb(message, &ecu_data);
+    parse_fn = parse_vw_mqb;
+    break;
+  case PLATFORM_RUSEFI_MRE:
+    parse_fn = parse_rusefi_mre;
     break;
   default:
-    parse_vw_pq35_46(message, &ecu_data);
+    parse_fn = parse_vw_pq35_46;
     break;
   }
 
-  ecu_data_update(&ecu_data);
+  if (parse_fn) {
+    parse_tx_ctx_t ctx = { .msg = message, .parse_fn = parse_fn };
+    ecu_data_update_transaction(parse_transaction_wrapper, &ctx);
+  }
 }

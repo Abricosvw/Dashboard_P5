@@ -34,6 +34,8 @@ lv_obj_t *ui_Arc_Knock_Retard = NULL;
 lv_obj_t *ui_Label_Knock_Retard_Value = NULL;
 lv_obj_t *ui_Arc_Boost_Act = NULL;
 lv_obj_t *ui_Label_Boost_Act_Value = NULL;
+lv_obj_t *ui_Arc_Ambient_Temp = NULL;
+lv_obj_t *ui_Label_Ambient_Temp_Value = NULL;
 
 // Animation variables
 static lv_anim_t anim_eng_tq_act;
@@ -45,6 +47,7 @@ static lv_anim_t anim_afr;
 static lv_anim_t anim_egt;
 static lv_anim_t anim_knock_retard;
 static lv_anim_t anim_boost_act;
+static lv_anim_t anim_ambient_temp;
 
 // Function prototypes
 static void anim_value_cb_screen5(void *var, int32_t v);
@@ -150,6 +153,8 @@ void ui_Screen5_screen_init(void) {
                "°", lv_color_hex(0xFFCC00), 0, 120, 370, 1200, GAUGE_KNOCK_RETARD);
   create_gauge(ui_Screen5, &ui_Arc_Boost_Act, &ui_Label_Boost_Act_Value, "Actual Boost",
                "kPa", lv_color_hex(0x00D4FF), 100, 250, 20, 1580, GAUGE_BOOST_ACT);
+  create_gauge(ui_Screen5, &ui_Arc_Ambient_Temp, &ui_Label_Ambient_Temp_Value, "Ambient Temp",
+               "°C", lv_color_hex(0x00FF88), -20, 60, 370, 1580, GAUGE_AMBIENT_TEMP);
 
   // Apply initial layout
   ui_Screen5_update_layout();
@@ -227,6 +232,14 @@ void ui_Screen5_screen_init(void) {
   lv_anim_set_repeat_count(&anim_boost_act, LV_ANIM_REPEAT_INFINITE);
   lv_anim_set_exec_cb(&anim_boost_act, anim_value_cb_screen5);
 
+  lv_anim_init(&anim_ambient_temp);
+  lv_anim_set_var(&anim_ambient_temp, ui_Arc_Ambient_Temp);
+  lv_anim_set_values(&anim_ambient_temp, -20, 60);
+  lv_anim_set_time(&anim_ambient_temp, 3500);
+  lv_anim_set_playback_time(&anim_ambient_temp, 3500);
+  lv_anim_set_repeat_count(&anim_ambient_temp, LV_ANIM_REPEAT_INFINITE);
+  lv_anim_set_exec_cb(&anim_ambient_temp, anim_value_cb_screen5);
+
   if (demo_mode_get_enabled()) {
     ui_Screen5_update_animations(true);
   }
@@ -256,6 +269,8 @@ static void anim_value_cb_screen5(void *var, int32_t v) {
     update_gauge(GAUGE_KNOCK_RETARD, ui_Arc_Knock_Retard, ui_Label_Knock_Retard_Value, v / 10.0f, "%.1f", 3.0f, 6.0f, false, lv_color_hex(0xFFCC00));
   else if (var == ui_Arc_Boost_Act)
     update_gauge(GAUGE_BOOST_ACT, ui_Arc_Boost_Act, ui_Label_Boost_Act_Value, v, "%.0f", 200, 230, false, lv_color_hex(0x00D4FF));
+  else if (var == ui_Arc_Ambient_Temp)
+    update_gauge(GAUGE_AMBIENT_TEMP, ui_Arc_Ambient_Temp, ui_Label_Ambient_Temp_Value, v, "%.0f", 45, 55, false, lv_color_hex(0x00FF88));
 }
 
 void ui_Screen5_update_animations(bool demo_enabled) {
@@ -269,6 +284,7 @@ void ui_Screen5_update_animations(bool demo_enabled) {
     lv_anim_start(&anim_egt);
     lv_anim_start(&anim_knock_retard);
     lv_anim_start(&anim_boost_act);
+    lv_anim_start(&anim_ambient_temp);
   } else {
     lv_anim_del(ui_Arc_Eng_TQ_Act, anim_value_cb_screen5);
     lv_anim_del(ui_Arc_Limit_TQ, anim_value_cb_screen5);
@@ -279,6 +295,7 @@ void ui_Screen5_update_animations(bool demo_enabled) {
     lv_anim_del(ui_Arc_EGT, anim_value_cb_screen5);
     lv_anim_del(ui_Arc_Knock_Retard, anim_value_cb_screen5);
     lv_anim_del(ui_Arc_Boost_Act, anim_value_cb_screen5);
+    lv_anim_del(ui_Arc_Ambient_Temp, anim_value_cb_screen5);
   }
 }
 
@@ -323,6 +340,10 @@ void ui_Screen5_update_arc_visibility(int arc_index, bool visible) {
   case 8:
     arc_container = lv_obj_get_parent(ui_Arc_Boost_Act);
     arc_name = "Actual Boost";
+    break;
+  case 9:
+    arc_container = lv_obj_get_parent(ui_Arc_Ambient_Temp);
+    arc_name = "Ambient Temp";
     break;
   default:
     ESP_LOGW("SCREEN5", "Invalid arc index: %d", arc_index);

@@ -16,6 +16,7 @@ typedef enum {
   PLATFORM_BMW_E9X, // BMW E90/E60 (Exx CAN)
   PLATFORM_BMW_E46, // BMW E46 (Limited support)
   PLATFORM_BMW_F_SERIES, // BMW F-Series (F30, etc.)
+  PLATFORM_RUSEFI_MRE,   // rusEFI microRusEFI (MRE)
   PLATFORM_MAX
 } CanPlatform;
 

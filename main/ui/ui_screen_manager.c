@@ -10,6 +10,8 @@
 #include "screens/ui_Screen6.h"
 #include "screens/ui_Screen7.h"
 #include "screens/ui_Screen9.h"
+#include "screens/ui_Screen10.h"
+#include "screens/ui_Screen11.h"
 
 #include "settings_config.h"
 #include "ui.h"
@@ -240,6 +242,12 @@ static bool ui_is_screen_enabled(screen_id_t screen_id) {
   case SCREEN_9:
     // Air to Water Intercooler - ENABLED
     return true;
+  case SCREEN_10:
+    // Wastegate & Blow-off Control - ENABLED
+    return true;
+  case SCREEN_11:
+    // VAG Diagnostic Scanner - ENABLED
+    return true;
   default:
     // Screens 1, 2, 4, 5 are managed by layout manager (empty check)
     // Need to map screen_id enum to layout manager index (which matches enum
@@ -251,9 +259,8 @@ static bool ui_is_screen_enabled(screen_id_t screen_id) {
 // Get next enabled screen in specified direction
 screen_id_t ui_get_next_enabled_screen(screen_id_t current_screen,
                                        bool forward) {
-  screen_id_t screens[] = {SCREEN_1, SCREEN_2, SCREEN_3,
-                           SCREEN_4, SCREEN_5, SCREEN_6,
-                           SCREEN_7, SCREEN_9};
+  screen_id_t screens[] = {SCREEN_1, SCREEN_2, SCREEN_4, SCREEN_5, SCREEN_8,
+                           SCREEN_3, SCREEN_6, SCREEN_7, SCREEN_9, SCREEN_10, SCREEN_11};
   int num_screens = sizeof(screens) / sizeof(screens[0]);
   int current_index = -1;
 
@@ -450,6 +457,28 @@ void ui_switch_to_screen(screen_id_t screen_id) {
     lv_scr_load_anim(ui_Screen9, anim_type, anim_time, 0, false);
     current_screen = SCREEN_9;
     ESP_LOGI("SCREEN_MANAGER", "Switched to SCREEN_9 (Intercooler)");
+    break;
+
+  case SCREEN_10:
+    // Lazy init: create Screen 10 on first use to save LVGL heap at boot
+    if (ui_Screen10 == NULL) {
+      ESP_LOGI("SCREEN_MANAGER", "Lazy-initializing Screen 10...");
+      ui_Screen10_screen_init();
+    }
+    lv_scr_load_anim(ui_Screen10, anim_type, anim_time, 0, false);
+    current_screen = SCREEN_10;
+    ESP_LOGI("SCREEN_MANAGER", "Switched to SCREEN_10 (Boost Control)");
+    break;
+
+  case SCREEN_11:
+    // Lazy init: create Screen 11 on first use to save LVGL heap at boot
+    if (ui_Screen11 == NULL) {
+      ESP_LOGI("SCREEN_MANAGER", "Lazy-initializing Screen 11...");
+      ui_Screen11_screen_init();
+    }
+    lv_scr_load_anim(ui_Screen11, anim_type, anim_time, 0, false);
+    current_screen = SCREEN_11;
+    ESP_LOGI("SCREEN_MANAGER", "Switched to SCREEN_11 (Diagnostic Scanner)");
     break;
 
   default:

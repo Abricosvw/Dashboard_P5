@@ -48,7 +48,7 @@ static lv_anim_t anim_boost;
 
 static void anim_value_cb(void *var, int32_t v) {
   if (var == ui_Arc_MAP) {
-    update_gauge(GAUGE_MAP, ui_Arc_MAP, ui_Label_MAP_Value, v, "%.0f", 1500, 1800, false, lv_color_hex(0x00D4FF));
+    update_gauge(GAUGE_MAP, ui_Arc_MAP, ui_Label_MAP_Value, v, "%.0f", 200, 230, false, lv_color_hex(0x00D4FF));
   } else if (var == ui_Arc_Wastegate) {
     update_gauge(GAUGE_WASTEGATE, ui_Arc_Wastegate, ui_Label_Wastegate_Value, v, "%.1f", 110, 120, false, lv_color_hex(0x00D4FF));
   } else if (var == ui_Arc_TPS) {

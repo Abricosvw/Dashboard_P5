@@ -65,10 +65,24 @@ typedef struct {
   bool show_egt;
   bool show_knock_retard;
   bool show_boost_act;
+  bool show_ambient_temp;
+  bool send_ambient_temp_to_can;
+  float ambient_can_temp;
 
   // Unit settings for each gauge
-  uint8_t gauge_units[26];
+  uint8_t gauge_units[32];
+
+  // VAG Diagnostic Emulation Settings
+  uint8_t diag_address;
+  uint8_t diag_protocol;
+  char diag_part_number[16];
+  char diag_comp_name[32];
+  char diag_hw_number[16];
+  char diag_sw_version[8];
+  char diag_vin[20];
+  uint32_t diag_coding;
 } touch_settings_t;
+
 
 // Function declarations
 void settings_init_defaults(touch_settings_t *settings);
@@ -113,6 +127,12 @@ void trigger_settings_save(void); // Асинхронное сохранение
 void settings_apply_changes(void);
 void settings_reset_to_defaults(void);
 esp_err_t settings_load(void);
+
+// Ambient Temp CAN transmit toggle helpers
+void settings_set_send_ambient_temp_to_can(bool enabled);
+bool settings_get_send_ambient_temp_to_can(void);
+void settings_set_ambient_can_temp(float temp);
+float settings_get_ambient_can_temp(void);
 
 #ifdef __cplusplus
 } /*extern "C"*/

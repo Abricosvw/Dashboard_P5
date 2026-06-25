@@ -1,53 +1,59 @@
-| Supported Targets | ESP32 | ESP32-C2 | ESP32-C3 | ESP32-C6 | ESP32-H2 | ESP32-P4 | ESP32-S2 | ESP32-S3 | Linux |
-| ----------------- | ----- | -------- | -------- | -------- | -------- | -------- | -------- | -------- | ----- |
+# Dashboard P5 (Westgate Dashboard & VAG Diagnostic Scanner)
 
-# Hello World Example
+An advanced automotive intelligence system powered by the **ESP32-P4** (dual-core RISC-V @ 400MHz, 16MB PSRAM). It features high-speed CAN bus parsing, custom variable-geometry wastegate & blow-off control, LUA scripting runtime, and an active VAG Diagnostic Scan Engine.
 
-Starts a FreeRTOS task to print "Hello World".
+---
 
-(See the README.md file in the upper level 'examples' directory for more information about examples.)
+## Technical Features
+- **High-Speed CAN Parsing**: Real-time decoding of engine metrics (RPM, Boost, TPS, Oil/Water Temperatures, Gear, Torque, IAT, etc.) at 500 kbit/s.
+- **Wastegate & Blow-off Control (Screen 10)**: Real-time custom control algorithms mimicking Bosch Motronic ME7.1 strategies (LDR and LDUVST) with support for 10-point RPM maps and dynamic TPS-drop / overboost triggers.
+- **Active VAG Diagnostic Scanner (Screen 11)**: Async diagnostic client using UDS over ISO-TP to scan for trouble codes (DTCs), display detailed descriptions, and clear fault codes across powertrain control modules.
+- **DTC Lookup Engine**: Instant lookups from a lightweight SRAM dictionary for critical fault codes, with dynamic line-by-line seek and retrieve from a text file database on the SD card (`/sdcard/SYSTEM/DB/dtc_codes.txt`) for hundreds of thousands of standard VAG decimal/OBD-II alphanumeric codes.
 
-## How to use example
+---
 
-Follow detailed instructions provided specifically for this example.
+## Screen Directory
+1. **Screen 1**: Main ECU Dashboard (Gauges for MAP, Wastegate, TPS, RPM, and Boost).
+2. **Screen 2**: Secondary Gauges (Oil Pressure, Oil Temp, Coolant Temp, Fuel Pressure, Battery).
+3. **Screen 3**: CAN Bus Sniffer & Terminal.
+4. **Screen 4**: ECU Advanced Parameters (Pedal, WG Pos, BOV Solenoid, TCU Torque Request/Actual).
+5. **Screen 5**: Engine Limits & Advanced Gauges (IAT, Speed, Trans Temp, AFR, EGT, Knock Retard, Boost Act).
+6. **Screen 6**: Device Configuration & Live Lua Script Editor.
+7. **Screen 7**: Open Claw AI Assistant Terminal.
+8. **Screen 8**: Classic Luxury Sport Dashboard.
+9. **Screen 9**: Air-to-Water Intercooler Controls (Pump PWM, fans, target temperature).
+10. **Screen 10**: Wastegate & Blow-off Strategy Controller (LDR/LDUVST).
+11. **Screen 11**: VAG Active Diagnostic Scanner (Auto-Scan, Read Faults, Clear Faults, Terminal Console).
 
-Select the instructions depending on Espressif chip installed on your development board:
+---
 
-- [ESP32 Getting Started Guide](https://docs.espressif.com/projects/esp-idf/en/stable/get-started/index.html)
-- [ESP32-S2 Getting Started Guide](https://docs.espressif.com/projects/esp-idf/en/latest/esp32s2/get-started/index.html)
+## 🚗 How to Run in the Car
 
+To use the active diagnostic scan features and emulated modules in your VAG vehicle, follow these instructions carefully.
 
-## Example folder contents
+### 1. Physical CAN Bus Connections
+The active scanner and the emulated components are designed to communicate on the **Powertrain CAN Bus** (operating at **500 kbit/s**).
+- Connect the ESP32's transceiver CAN-TX/RX pins to the Powertrain CAN lines.
+- **Tapping points**: 
+  - **Option A (Direct OBD-II)**: Pins **6 (CAN High)** and **14 (CAN Low)** on the standard OBD-II diagnostic port.
+  - **Option B (Gateway Module)**: Tap directly into the Powertrain bus wiring loom at the Gateway control unit (usually located under the steering column).
+- *Note*: Do not connect to the Comfort/Infotainment CAN buses as they run at a different speed (100 kbit/s) and cannot route UDS messages to powertrain modules.
 
-The project **hello_world** contains one source file in C language [hello_world_main.c](main/hello_world_main.c). The file is located in folder [main](main).
+### 2. Gateway Installation List Registration (VAG Coding)
+The dashboard emulates **Address 13 (ACC / Auto Distance Regulation)** on standard request/response identifiers (`0x757` request, `0x7C1` response). To prevent Gateway routing problems and ensure clean communications:
+1. Connect a diagnostic tool (like **VCDS** or **ODIS**) to the car.
+2. Open module **19 - CAN Gateway**.
+3. Go to **Installation List**.
+4. Check/Enable **13 - Auto Dist. Reg / ACC**.
+5. Save coding. The gateway will now treat the dashboard as a registered factory module on the Powertrain bus, avoiding route blockage issues.
 
-ESP-IDF projects are built using CMake. The project build configuration is contained in `CMakeLists.txt` files that provide set of directives and instructions describing the project's source files and targets (executable, library, or both).
-
-Below is short explanation of remaining files in the project folder.
-
-```
-├── CMakeLists.txt
-├── pytest_hello_world.py      Python script used for automated testing
-├── main
-│   ├── CMakeLists.txt
-│   └── hello_world_main.c
-└── README.md                  This is the file you are currently reading
-```
-
-For more information on structure and contents of ESP-IDF projects, please refer to Section [Build System](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/build-system.html) of the ESP-IDF Programming Guide.
-
-## Troubleshooting
-
-* Program upload failure
-
-    * Hardware connection is not correct: run `idf.py -p PORT monitor`, and reboot your board to see if there are any output logs.
-    * The baud rate for downloading is too high: lower your baud rate in the `menuconfig` menu, and try again.
-
-## Technical support and feedback
-
-Please use the following feedback channels:
-
-* For technical queries, go to the [esp32.com](https://esp32.com/) forum
-* For a feature request or bug report, create a [GitHub issue](https://github.com/espressif/esp-idf/issues)
-
-We will get back to you as soon as possible.
+### 3. Running Diagnostic Scans
+1. Turn the ignition to the **ON** position (or start the engine).
+2. Swipe or navigate using bottom arrow buttons to **Screen 11 (VAG Diagnostic Scanner)**.
+3. Tap **AUTO SCAN** on the screen.
+   - The scanner task will run asynchronously in the background.
+   - The progress bar and terminal logs will update in real-time.
+   - It will sequentially query Engine, Transmission, ABS Brakes, Airbags, Steering Assist, ACC, and Haldex AWD modules.
+   - Fault descriptions will be resolved using the SD card database (`/sdcard/SYSTEM/DB/dtc_codes.txt`).
+4. To reset faults, tap **CLEAR FAULTS**.
+5. Tap **CLEAR LOGS** to reset the console screen.

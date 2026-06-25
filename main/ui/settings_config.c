@@ -39,8 +39,13 @@ static void settings_to_json(const touch_settings_t *settings, char *buffer,
            "\"show_eng_act\":%s,\"show_limit_tq\":%s,"
            "\"show_iat\":%s,\"show_speed\":%s,\"show_trans_temp\":%s,"
            "\"show_afr\":%s,\"show_egt\":%s,\"show_knock_retard\":%s,\"show_boost_act\":%s,"
+           "\"show_ambient_temp\":%s,\"send_ambient_temp_to_can\":%s,\"ambient_can_temp\":%.1f,"
            "\"can_platform\":%d,"
-           "\"boot_sound_path\":\"%s\",",
+           "\"boot_sound_path\":\"%s\","
+           "\"diag_address\":%d,\"diag_protocol\":%d,"
+           "\"diag_part_number\":\"%s\",\"diag_comp_name\":\"%s\","
+           "\"diag_hw_number\":\"%s\",\"diag_sw_version\":\"%s\","
+           "\"diag_vin\":\"%s\",\"diag_coding\":%lu,",
            settings->touch_sensitivity_level,
            settings->demo_mode_enabled ? "true" : "false",
            settings->screen3_enabled ? "true" : "false",
@@ -71,7 +76,14 @@ static void settings_to_json(const touch_settings_t *settings, char *buffer,
            sys_settings->show_egt ? "true" : "false",
            sys_settings->show_knock_retard ? "true" : "false",
            sys_settings->show_boost_act ? "true" : "false",
-           settings->can_platform, settings->boot_sound_path);
+           sys_settings->show_ambient_temp ? "true" : "false",
+           sys_settings->send_ambient_temp_to_can ? "true" : "false",
+           sys_settings->ambient_can_temp,
+           settings->can_platform, settings->boot_sound_path,
+           settings->diag_address, settings->diag_protocol,
+           settings->diag_part_number, settings->diag_comp_name,
+           settings->diag_hw_number, settings->diag_sw_version,
+           settings->diag_vin, (unsigned long)settings->diag_coding);
 
   // Now append units array: "units":[0,0,...]}
   if (len > 0 && (size_t)len < buffer_size) {
@@ -182,6 +194,16 @@ static bool settings_from_json(const char *json_str,
     PARSE_BOOL("show_egt", sys_settings->show_egt);
     PARSE_BOOL("show_knock_retard", sys_settings->show_knock_retard);
     PARSE_BOOL("show_boost_act", sys_settings->show_boost_act);
+    PARSE_BOOL("show_ambient_temp", sys_settings->show_ambient_temp);
+    PARSE_BOOL("send_ambient_temp_to_can", sys_settings->send_ambient_temp_to_can);
+
+    const char *amb_temp_key = "\"ambient_can_temp\":";
+    char *amb_temp_ptr = strstr(json_str, amb_temp_key);
+    if (amb_temp_ptr) {
+      sys_settings->ambient_can_temp = atof(amb_temp_ptr + strlen(amb_temp_key));
+    } else {
+      sys_settings->ambient_can_temp = 20.0f; // default 20C
+    }
 
     // Sync to touch_settings_t
     settings->show_iat = sys_settings->show_iat;
@@ -191,6 +213,9 @@ static bool settings_from_json(const char *json_str,
     settings->show_egt = sys_settings->show_egt;
     settings->show_knock_retard = sys_settings->show_knock_retard;
     settings->show_boost_act = sys_settings->show_boost_act;
+    settings->show_ambient_temp = sys_settings->show_ambient_temp;
+    settings->send_ambient_temp_to_can = sys_settings->send_ambient_temp_to_can;
+    settings->ambient_can_temp = sys_settings->ambient_can_temp;
 
     // Parse units array
     const char *units_key = "\"units\":[";
@@ -224,6 +249,119 @@ static bool settings_from_json(const char *json_str,
               sizeof(settings->boot_sound_path));
     }
 
+    // Parse VAG Diagnostic Emulation Settings
+    const char *diag_addr_key = "\"diag_address\":";
+    char *diag_addr_ptr = strstr(json_str, diag_addr_key);
+    if (diag_addr_ptr) {
+      settings->diag_address = atoi(diag_addr_ptr + strlen(diag_addr_key));
+    } else {
+      settings->diag_address = 0x13; // default Address 13 (ACC / Auto Distance Regulation)
+    }
+    sys_settings->diag_address = settings->diag_address;
+
+    const char *diag_proto_key = "\"diag_protocol\":";
+    char *diag_proto_ptr = strstr(json_str, diag_proto_key);
+    if (diag_proto_ptr) {
+      settings->diag_protocol = atoi(diag_proto_ptr + strlen(diag_proto_key));
+    } else {
+      settings->diag_protocol = 3; // default Both
+    }
+    sys_settings->diag_protocol = settings->diag_protocol;
+
+    const char *part_key = "\"diag_part_number\":\"";
+    char *part_ptr = strstr(json_str, part_key);
+    if (part_ptr) {
+      char *val_start = part_ptr + strlen(part_key);
+      char *val_end = strchr(val_start, '\"');
+      if (val_end) {
+        size_t len = val_end - val_start;
+        if (len < sizeof(settings->diag_part_number)) {
+          strncpy(settings->diag_part_number, val_start, len);
+          settings->diag_part_number[len] = '\0';
+        }
+      }
+    } else {
+      strcpy(settings->diag_part_number, "P5-DASHBOARD");
+    }
+    strcpy(sys_settings->diag_part_number, settings->diag_part_number);
+
+    const char *comp_key = "\"diag_comp_name\":\"";
+    char *comp_ptr = strstr(json_str, comp_key);
+    if (comp_ptr) {
+      char *val_start = comp_ptr + strlen(comp_key);
+      char *val_end = strchr(val_start, '\"');
+      if (val_end) {
+        size_t len = val_end - val_start;
+        if (len < sizeof(settings->diag_comp_name)) {
+          strncpy(settings->diag_comp_name, val_start, len);
+          settings->diag_comp_name[len] = '\0';
+        }
+      }
+    } else {
+      strcpy(settings->diag_comp_name, "Dashboard P5  H01 0100");
+    }
+    strcpy(sys_settings->diag_comp_name, settings->diag_comp_name);
+
+    const char *hw_key = "\"diag_hw_number\":\"";
+    char *hw_ptr = strstr(json_str, hw_key);
+    if (hw_ptr) {
+      char *val_start = hw_ptr + strlen(hw_key);
+      char *val_end = strchr(val_start, '\"');
+      if (val_end) {
+        size_t len = val_end - val_start;
+        if (len < sizeof(settings->diag_hw_number)) {
+          strncpy(settings->diag_hw_number, val_start, len);
+          settings->diag_hw_number[len] = '\0';
+        }
+      }
+    } else {
+      strcpy(settings->diag_hw_number, "P5-DASHBOARD");
+    }
+    strcpy(sys_settings->diag_hw_number, settings->diag_hw_number);
+
+    const char *sw_ver_key = "\"diag_sw_version\":\"";
+    char *sw_ver_ptr = strstr(json_str, sw_ver_key);
+    if (sw_ver_ptr) {
+      char *val_start = sw_ver_ptr + strlen(sw_ver_key);
+      char *val_end = strchr(val_start, '\"');
+      if (val_end) {
+        size_t len = val_end - val_start;
+        if (len < sizeof(settings->diag_sw_version)) {
+          strncpy(settings->diag_sw_version, val_start, len);
+          settings->diag_sw_version[len] = '\0';
+        }
+      }
+    } else {
+      strcpy(settings->diag_sw_version, "0100");
+    }
+    strcpy(sys_settings->diag_sw_version, settings->diag_sw_version);
+
+    const char *vin_key = "\"diag_vin\":\"";
+    char *vin_ptr = strstr(json_str, vin_key);
+    if (vin_ptr) {
+      char *val_start = vin_ptr + strlen(vin_key);
+      char *val_end = strchr(val_start, '\"');
+      if (val_end) {
+        size_t len = val_end - val_start;
+        if (len < sizeof(settings->diag_vin)) {
+          strncpy(settings->diag_vin, val_start, len);
+          settings->diag_vin[len] = '\0';
+        }
+      }
+    } else {
+      strcpy(settings->diag_vin, "1VWBP7A39DC091177");
+    }
+    strcpy(sys_settings->diag_vin, settings->diag_vin);
+
+    const char *coding_key = "\"diag_coding\":";
+    char *coding_ptr = strstr(json_str, coding_key);
+    if (coding_ptr) {
+      settings->diag_coding = strtoul(coding_ptr + strlen(coding_key), NULL, 10);
+    } else {
+      settings->diag_coding = 1; // default coding 1
+    }
+    sys_settings->diag_coding = settings->diag_coding;
+
     return true;
   }
   return false;
@@ -252,9 +390,12 @@ void settings_init_defaults(touch_settings_t *settings) {
   settings->show_egt = true;
   settings->show_knock_retard = true;
   settings->show_boost_act = true;
+  settings->show_ambient_temp = true;
+  settings->send_ambient_temp_to_can = false;
+  settings->ambient_can_temp = 20.0f;
 
   // Initialize gauge units defaults
-  for (int i = 0; i < 26; i++) {
+  for (int i = 0; i < 32; i++) {
     settings->gauge_units[i] = 0;
   }
   settings->gauge_units[GAUGE_MAP] = UNIT_KPA;
@@ -274,6 +415,17 @@ void settings_init_defaults(touch_settings_t *settings) {
   settings->gauge_units[GAUGE_ENG_REQ] = UNIT_NM;
   settings->gauge_units[GAUGE_ENG_ACT] = UNIT_NM;
   settings->gauge_units[GAUGE_LIMIT_TQ] = UNIT_NM;
+  settings->gauge_units[GAUGE_AMBIENT_TEMP] = UNIT_CELSIUS;
+
+  // Default diagnostic settings (VAG ACC Emulation)
+  settings->diag_address = 0x13; // Address 13 (ACC / Auto Distance Regulation Control Module)
+  settings->diag_protocol = 3;   // Both UDS and KWP2000 over TP2.0
+  strcpy(settings->diag_part_number, "P5-DASHBOARD");
+  strcpy(settings->diag_comp_name, "Dashboard P5  H01 0100");
+  strcpy(settings->diag_hw_number, "P5-DASHBOARD");
+  strcpy(settings->diag_sw_version, "0100");
+  strcpy(settings->diag_vin, "1VWBP7A39DC091177");
+  settings->diag_coding = 1;      // default coding 1
 
   // Sync with sys_settings
   system_settings_t *sys_settings = system_settings_get();
@@ -285,9 +437,20 @@ void settings_init_defaults(touch_settings_t *settings) {
     sys_settings->show_egt = true;
     sys_settings->show_knock_retard = true;
     sys_settings->show_boost_act = true;
-    for (int i = 0; i < 26; i++) {
+    sys_settings->show_ambient_temp = true;
+    sys_settings->send_ambient_temp_to_can = false;
+    sys_settings->ambient_can_temp = 20.0f;
+    for (int i = 0; i < 32; i++) {
       sys_settings->gauge_units[i] = settings->gauge_units[i];
     }
+    sys_settings->diag_address = settings->diag_address;
+    sys_settings->diag_protocol = settings->diag_protocol;
+    strcpy(sys_settings->diag_part_number, settings->diag_part_number);
+    strcpy(sys_settings->diag_comp_name, settings->diag_comp_name);
+    strcpy(sys_settings->diag_hw_number, settings->diag_hw_number);
+    strcpy(sys_settings->diag_sw_version, settings->diag_sw_version);
+    strcpy(sys_settings->diag_vin, settings->diag_vin);
+    sys_settings->diag_coding = settings->diag_coding;
   }
 
   ESP_LOGI(TAG,
@@ -586,4 +749,30 @@ void settings_set_boot_sound_path(const char *path) {
     current_settings
         .boot_sound_path[sizeof(current_settings.boot_sound_path) - 1] = '\0';
   }
+}
+
+void settings_set_send_ambient_temp_to_can(bool enabled) {
+  current_settings.send_ambient_temp_to_can = enabled;
+  system_settings_t *sys_settings = system_settings_get();
+  if (sys_settings) {
+    sys_settings->send_ambient_temp_to_can = enabled;
+  }
+  trigger_settings_save();
+}
+
+bool settings_get_send_ambient_temp_to_can(void) {
+  return current_settings.send_ambient_temp_to_can;
+}
+
+void settings_set_ambient_can_temp(float temp) {
+  current_settings.ambient_can_temp = temp;
+  system_settings_t *sys_settings = system_settings_get();
+  if (sys_settings) {
+    sys_settings->ambient_can_temp = temp;
+  }
+  trigger_settings_save();
+}
+
+float settings_get_ambient_can_temp(void) {
+  return current_settings.ambient_can_temp;
 }

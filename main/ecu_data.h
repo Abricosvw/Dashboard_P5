@@ -45,6 +45,7 @@ typedef struct {
   float afr_target;
   float egt_temp;
   float knock_retard;
+  float ambient_temp;
 
   // System
   uint64_t timestamp;
@@ -93,16 +94,30 @@ typedef struct {
   bool show_egt;
   bool show_knock_retard;
   bool show_boost_act;
+  bool show_ambient_temp;
+  bool send_ambient_temp_to_can;
+  float ambient_can_temp;
 
   // Unit settings for each gauge
-  uint8_t gauge_units[26];
+  uint8_t gauge_units[32];
 
   // Dynamic Layout Settings
   int active_gauge_ids[24]; // Ordered list of enabled gauge IDs
   int active_gauge_count;   // Number of active gauges
   bool screen3_enabled;
   uint32_t screen_brightness; // Added for P4 compatibility
+
+  // VAG Diagnostic Emulation Settings
+  uint8_t diag_address;       // Diagnostic address (e.g. 0x3D)
+  uint8_t diag_protocol;      // Protocol: 0=Disabled, 1=UDS, 2=TP2.0/KWP2000, 3=Both
+  char diag_part_number[16];  // VAG Part Number string (Software Number)
+  char diag_comp_name[32];    // VAG Component Name string (System Description)
+  char diag_hw_number[16];    // VAG Hardware Number string
+  char diag_sw_version[8];    // VAG Software Version string
+  char diag_vin[20];          // VAG VIN string
+  uint32_t diag_coding;       // VAG Coding (integer)
 } system_settings_t;
+
 
 // Gauge IDs for dynamic layout
 typedef enum {
@@ -143,6 +158,7 @@ typedef enum {
   GAUGE_EGT,
   GAUGE_KNOCK_RETARD,
   GAUGE_BOOST_ACT,
+  GAUGE_AMBIENT_TEMP,
 
   GAUGE_MAX
 } gauge_id_t;
@@ -165,6 +181,8 @@ typedef struct {
 // Function prototypes
 void ecu_data_init(void);
 void ecu_data_update(ecu_data_t *data);
+typedef void (*ecu_data_update_fn_t)(ecu_data_t *state, void *ctx);
+void ecu_data_update_transaction(ecu_data_update_fn_t update_fn, void *ctx);
 ecu_data_t *ecu_data_get(void);                // Unsafe, for internal use
 void ecu_data_get_copy(ecu_data_t *data_copy); // Thread-safe getter
 char *ecu_data_to_json(const ecu_data_t *data);

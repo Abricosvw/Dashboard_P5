@@ -16,8 +16,21 @@
 #include "esp_timer.h"
 #include "lauxlib.h"
 #include "lualib.h"
+#include "esp_heap_caps.h"
 
 static const char *TAG = "cap_lua_rt";
+
+static void *lua_alloc_psram(void *ud, void *ptr, size_t osize, size_t nsize) {
+    (void)ud;
+    (void)osize;
+    if (nsize == 0) {
+        if (ptr) {
+            heap_caps_free(ptr);
+        }
+        return NULL;
+    }
+    return heap_caps_realloc(ptr, nsize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+}
 
 typedef struct {
     char *buf;
@@ -326,7 +339,7 @@ esp_err_t cap_lua_runtime_execute_file(const char *path,
         return ESP_ERR_INVALID_SIZE;
     }
 
-    L = luaL_newstate();
+    L = lua_newstate(lua_alloc_psram, NULL, 0);
     if (!L) {
         snprintf(output, output_size, "Error: failed to create Lua state");
         return ESP_ERR_NO_MEM;

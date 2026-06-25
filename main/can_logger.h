@@ -17,6 +17,9 @@ void can_logger_stop(void);
 // Queue a CAN message for logging
 void can_logger_log(uint32_t id, uint8_t *data, uint8_t dlc);
 
+// Queue a CAN message for logging specifying the source bus ID
+void can_logger_log_bus(uint8_t bus_id, uint32_t id, uint8_t *data, uint8_t dlc);
+
 // Check if currently recording
 bool can_logger_is_recording(void);
 

@@ -5,6 +5,7 @@
 #include "audio_manager.h"
 #include "background_task.h"
 #include "can_manager.h"
+#include "can_logger.h"
 #include "ecu_data.h"
 #include "cap_im_tg.h"
 #include "display_init.h"
@@ -165,6 +166,7 @@ void app_main(void) {
   // =========================================================================
   ESP_LOGI(TAG, "[7] CAN Bus init...");
   can_init();
+  can_logger_init();
   ESP_LOGI(TAG, "[7] Heap after CAN: Internal=%lu, PSRAM=%lu",
            (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
            (unsigned long)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
@@ -233,22 +235,57 @@ void app_main(void) {
     if (boot_msg_timer > 0) {
       boot_msg_timer--;
       if (boot_msg_timer == 0) {
-          ESP_LOGI(TAG, "Sending IFF/Startup Telegram message...");
-          /* Retry up to 3 times with 25-sec gaps between attempts.
-           * The long-poll holds HTTPS for 20 sec; 25 sec covers the gap. */
-          const char *iff_msg =
-              "🚀 *Dashboard_P5 (Open Claw) Online!*\n✅ IFF Check: FRIEND\n"
-              "✅ Diagnostic: STABLE\nWaiting for commands...";
+          ESP_LOGI(TAG, "Sending extended system status to Telegram...");
+
+          /* Gather system status */
+          wifi_controller_info_t wifi_info;
+          wifi_controller_get_info(&wifi_info);
+
+          bool demo = demo_mode_get_enabled();
+          bool can1_ok = (g_can1_handle != NULL);
+          bool can2_ok = (g_can2_handle != NULL);
+
+          size_t heap_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+          size_t heap_psram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+
+          /* Build extended status message (static to avoid 1KB stack usage) */
+          static char iff_msg[1024];
+          snprintf(iff_msg, sizeof(iff_msg),
+              "🚀 *Dashboard\\_P5 (Open Claw) Online!*\n"
+              "✅ IFF Check: FRIEND\n"
+              "━━━━━━━━━━━━━━━━━━━━\n"
+              "📡 *Subsystem Status:*\n"
+              "• WiFi AP: %s (RSSI: %d dBm)\n"
+              "• CAN1 Powertrain: %s\n"
+              "• CAN2 Diagnostic: %s\n"
+              "• Lua Engine: ✅ READY\n"
+              "• ESP Claw AI: ✅ ACTIVE (Gemini + Wake Word)\n"
+              "• Diagnostic Scanner: ✅ READY (11 modules)\n"
+              "• Telegram: ✅ ONLINE\n"
+              "━━━━━━━━━━━━━━━━━━━━\n"
+              "🖥 *System Info:*\n"
+              "• Demo Mode: %s\n"
+              "• Screens: 11 (1-Main, 10-WG/BOV, 11-Diag)\n"
+              "• Heap Internal: %lu KB\n"
+              "• Heap PSRAM: %lu KB\n"
+              "━━━━━━━━━━━━━━━━━━━━\n"
+              "⏳ Waiting for commands...",
+              wifi_info.ssid[0] ? wifi_info.ssid : "ESP32P4\\_Dashboard",
+              wifi_info.rssi,
+              can1_ok ? "✅ 500kbps" : "❌ OFFLINE",
+              can2_ok ? "✅ 500kbps" : "❌ OFFLINE",
+              demo ? "🟢 ON" : "⚪ OFF",
+              (unsigned long)(heap_internal / 1024),
+              (unsigned long)(heap_psram / 1024));
+
           for (int attempt = 0; attempt < 3; attempt++) {
             if (attempt > 0) {
               ESP_LOGI(TAG, "IFF retry %d/3 - waiting 25s for poll gap...", attempt + 1);
               vTaskDelay(pdMS_TO_TICKS(25000));
             }
-            /* telegram_send_message internally checks telegram_running */
             telegram_send_message(iff_msg);
-            /* Small delay to let the HTTP call complete before checking */
             vTaskDelay(pdMS_TO_TICKS(2000));
-            break; /* telegram_send_message logs success/fail; single attempt is fine */
+            break;
           }
         }
     }

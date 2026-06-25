@@ -103,6 +103,8 @@ void ui_destroy(void) {
   ui_Screen6_screen_destroy();
   ui_Screen7_screen_destroy();
   ui_Screen9_screen_destroy();
+  ui_Screen10_screen_destroy();
+  ui_Screen11_screen_destroy();
 }
 
 /**
@@ -145,6 +147,42 @@ static void unit_select_cb(lv_event_t *e) {
   unit_popup_close_cb(NULL);
 }
 
+static void ambient_temp_val_cb(lv_event_t *e) {
+  int val = (int)(uintptr_t)lv_event_get_user_data(e);
+  settings_set_ambient_can_temp((float)val);
+
+  lv_obj_t *btn = lv_event_get_target(e);
+  lv_obj_t *row = lv_obj_get_parent(btn);
+  uint32_t cnt = lv_obj_get_child_cnt(row);
+  for (uint32_t i = 0; i < cnt; i++) {
+    lv_obj_t *child = lv_obj_get_child(row, i);
+    int child_val = (int)(uintptr_t)lv_obj_get_user_data(child);
+    if (child_val == val) {
+      lv_obj_set_style_bg_color(child, lv_color_hex(0x00FF88), 0); // Active green
+    } else {
+      lv_obj_set_style_bg_color(child, lv_color_hex(0x333333), 0); // Dark grey
+    }
+  }
+  ESP_LOGI("UI", "Target Ambient Temp set to %d C", val);
+}
+
+static void ambient_temp_send_toggle_cb(lv_event_t *e) {
+  lv_obj_t *cb = lv_event_get_target(e);
+  bool checked = lv_obj_has_state(cb, LV_STATE_CHECKED);
+  settings_set_send_ambient_temp_to_can(checked);
+  ESP_LOGI("UI", "Ambient Temp Send to CAN toggled to: %s", checked ? "ON" : "OFF");
+
+  // Toggle visibility of the temperature selector row
+  lv_obj_t *temp_row = (lv_obj_t *)lv_obj_get_user_data(cb);
+  if (temp_row) {
+    if (checked) {
+      lv_obj_clear_flag(temp_row, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(temp_row, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+}
+
 void ui_gauge_click_event_cb(lv_event_t *e) {
   gauge_id_t id = (gauge_id_t)(uintptr_t)lv_event_get_user_data(e);
 
@@ -168,7 +206,7 @@ void ui_gauge_click_event_cb(lv_event_t *e) {
     opts[1] = "AFR 14.7"; units[1] = UNIT_AFR;
     opts[2] = "Volts";    units[2] = UNIT_VOLTS;
     opt_count = 3;
-  } else if (id == GAUGE_OIL_TEMP || id == GAUGE_WATER_TEMP || id == GAUGE_IAT || id == GAUGE_TRANS_TEMP || id == GAUGE_EGT) {
+  } else if (id == GAUGE_OIL_TEMP || id == GAUGE_WATER_TEMP || id == GAUGE_IAT || id == GAUGE_TRANS_TEMP || id == GAUGE_EGT || id == GAUGE_AMBIENT_TEMP) {
     opts[0] = "Celsius (C)";       units[0] = UNIT_CELSIUS;
     opts[1] = "Fahrenheit (F)";   units[1] = UNIT_FAHRENHEIT;
     opt_count = 2;
@@ -187,7 +225,7 @@ void ui_gauge_click_event_cb(lv_event_t *e) {
   // Create popup modal
   lv_obj_t *current_scr = lv_scr_act();
   s_unit_popup = lv_obj_create(current_scr);
-  lv_obj_set_size(s_unit_popup, 400, 320);
+  lv_obj_set_size(s_unit_popup, 400, (id == GAUGE_AMBIENT_TEMP) ? 420 : 320);
   lv_obj_center(s_unit_popup);
   lv_obj_set_style_bg_color(s_unit_popup, lv_color_hex(0x1a1a1a), 0);
   lv_obj_set_style_bg_opa(s_unit_popup, LV_OPA_COVER, 0);
@@ -218,6 +256,59 @@ void ui_gauge_click_event_cb(lv_event_t *e) {
     lv_label_set_text(lbl, opts[i]);
     lv_obj_set_style_text_color(lbl, lv_color_white(), 0);
     lv_obj_center(lbl);
+  }
+
+  // Add CAN broadcast toggle checkbox and temp selection for Ambient Temperature Gauge
+  if (id == GAUGE_AMBIENT_TEMP) {
+    // Create the temp_row container first
+    lv_obj_t *temp_row = lv_obj_create(s_unit_popup);
+    lv_obj_set_size(temp_row, 365, 48);
+    lv_obj_set_flex_flow(temp_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(temp_row, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_bg_opa(temp_row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(temp_row, 0, 0);
+    lv_obj_set_style_pad_all(temp_row, 0, 0);
+    lv_obj_set_style_pad_gap(temp_row, 4, 0);
+
+    float current_target_temp = settings_get_ambient_can_temp();
+    int temp_values[] = {5, 10, 15, 20, 25, 30, 35};
+    for (int j = 0; j < 7; j++) {
+      lv_obj_t *t_btn = lv_btn_create(temp_row);
+      lv_obj_set_size(t_btn, 46, 36);
+      lv_obj_set_user_data(t_btn, (void*)(uintptr_t)temp_values[j]);
+      lv_obj_add_event_cb(t_btn, ambient_temp_val_cb, LV_EVENT_CLICKED, (void*)(uintptr_t)temp_values[j]);
+      
+      // Determine background color
+      if ((int)current_target_temp == temp_values[j]) {
+        lv_obj_set_style_bg_color(t_btn, lv_color_hex(0x00FF88), 0); // Active green
+      } else {
+        lv_obj_set_style_bg_color(t_btn, lv_color_hex(0x333333), 0); // Dark grey
+      }
+      lv_obj_set_style_radius(t_btn, 8, 0);
+
+      lv_obj_t *t_lbl = lv_label_create(t_btn);
+      char t_str[8];
+      snprintf(t_str, sizeof(t_str), "+%d", temp_values[j]);
+      lv_label_set_text(t_lbl, t_str);
+      lv_obj_set_style_text_color(t_lbl, lv_color_white(), 0);
+      lv_obj_center(t_lbl);
+    }
+
+    // Create the checkbox and link the temp_row in user_data
+    lv_obj_t *cb = lv_checkbox_create(s_unit_popup);
+    lv_checkbox_set_text(cb, "Send to CAN");
+    lv_obj_set_style_text_color(cb, lv_color_white(), 0);
+    
+    bool is_sending = settings_get_send_ambient_temp_to_can();
+    if (is_sending) {
+      lv_obj_add_state(cb, LV_STATE_CHECKED);
+      lv_obj_clear_flag(temp_row, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(temp_row, LV_OBJ_FLAG_HIDDEN);
+    }
+    
+    lv_obj_set_user_data(cb, temp_row);
+    lv_obj_add_event_cb(cb, ambient_temp_send_toggle_cb, LV_EVENT_VALUE_CHANGED, NULL);
   }
 
   // Cancel Button

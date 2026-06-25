@@ -37,6 +37,12 @@ extern void ui_process_real_can_message(uint32_t id, uint8_t *data,
                                         uint8_t dlc);
 extern void ui_process_real_can_message_ext(uint32_t id, uint8_t *data,
                                             uint8_t dlc, bool is_tx);
+extern void ui_process_real_can_message_bus(uint8_t bus_id, uint32_t id, uint8_t *data,
+                                            uint8_t dlc, bool is_tx);
+extern void ui_add_can_message_ext_bus(uint8_t bus_id, uint32_t id, uint8_t *data, uint8_t dlc, bool is_tx);
+
+extern lv_obj_t *ui_Checkbox_CAN1;
+extern lv_obj_t *ui_Checkbox_CAN2;
 
 #ifdef __cplusplus
 } /*extern "C"*/

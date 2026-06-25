@@ -51,9 +51,9 @@ static const struct {
 ai_cmd_result_t ai_cmd_switch_screen(int screen_number) {
   ai_cmd_result_t result = {.success = false, .message = ""};
 
-  if (screen_number < 1 || screen_number > 9) {
+  if (screen_number < 1 || screen_number > 11) {
     snprintf(result.message, sizeof(result.message),
-             "Ошибка: экран %d не существует. Доступны экраны 1-9.",
+             "Ошибка: экран %d не существует. Доступны экраны 1-11.",
              screen_number);
     return result;
   }

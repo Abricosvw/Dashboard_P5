@@ -38,6 +38,8 @@ extern lv_obj_t *ui_Arc_Knock_Retard;
 extern lv_obj_t *ui_Label_Knock_Retard_Value;
 extern lv_obj_t *ui_Arc_Boost_Act;
 extern lv_obj_t *ui_Label_Boost_Act_Value;
+extern lv_obj_t *ui_Arc_Ambient_Temp;
+extern lv_obj_t *ui_Label_Ambient_Temp_Value;
 
 // Arc visibility control
 void ui_Screen5_update_arc_visibility(int arc_index, bool visible);

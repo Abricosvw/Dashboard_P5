@@ -107,6 +107,7 @@ static bool show_afr = true;
 static bool show_egt = true;
 static bool show_knock_retard = true;
 static bool show_boost_act = true;
+static bool show_ambient_temp = true;
 
 // Function prototypes
 static void save_settings_event_cb(lv_event_t *e);
@@ -310,6 +311,8 @@ static gauge_id_t get_gauge_id_from_text(const char *txt) {
     return GAUGE_KNOCK_RETARD;
   if (strcmp(txt, "Act Boost") == 0)
     return GAUGE_BOOST_ACT;
+  if (strcmp(txt, "Ambient Temp") == 0)
+    return GAUGE_AMBIENT_TEMP;
 
   return GAUGE_NONE;
 }
@@ -416,6 +419,8 @@ static void gauge_checkbox_event_cb(lv_event_t *e) {
     show_knock_retard = checked;
   else if (strcmp(txt, "Act Boost") == 0)
     show_boost_act = checked;
+  else if (strcmp(txt, "Ambient Temp") == 0)
+    show_ambient_temp = checked;
 
   settings_modified = 1;
   ESP_LOGI("SCREEN6", "Gauge %s toggled to: %s", txt, checked ? "ON" : "OFF");
@@ -478,6 +483,8 @@ static void gauge_checkbox_event_cb(lv_event_t *e) {
       settings->show_knock_retard = checked;
     else if (strcmp(txt, "Act Boost") == 0)
       settings->show_boost_act = checked;
+    else if (strcmp(txt, "Ambient Temp") == 0)
+      settings->show_ambient_temp = checked;
 
     // Update ordered list
     gauge_id_t id = get_gauge_id_from_text(txt);
@@ -523,6 +530,8 @@ static void platform_checkbox_event_cb(lv_event_t *e) {
     selected_platform = PLATFORM_BMW_E46;
   else if (strcmp(txt, "BMW Fxx") == 0)
     selected_platform = PLATFORM_BMW_F_SERIES;
+  else if (strcmp(txt, "rusEFI MRE") == 0)
+    selected_platform = PLATFORM_RUSEFI_MRE;
 
   // Apply via setter (also updates parser)
   settings_set_can_platform(selected_platform);
@@ -953,9 +962,9 @@ void ui_Screen6_screen_init(void) {
       "Water Temp", "Fuel Press", "Battery",   "Screen 4:", "Pedal",
       "WG Pos",     "BOV",        "TCU Req",   "TCU Act",   "Eng Req",
       "Screen 5:",  "Eng Act",    "Limit TQ",  "IAT",       "Speed",
-      "Trans Temp", "Lambda/AFR", "EGT",       "Knock",     "Act Boost"};
+      "Trans Temp", "Lambda/AFR", "EGT",       "Knock",     "Act Boost", "Ambient Temp"};
 
-  for (int i = 0; i < 30; i++) {
+  for (int i = 0; i < 31; i++) {
     if (strchr(gauges[i], ':')) {
       lv_obj_t *header = lv_label_create(ui_Container_GaugeList);
       lv_label_set_text(header, gauges[i]);
@@ -988,9 +997,9 @@ void ui_Screen6_screen_init(void) {
   lv_obj_set_style_text_font(platform_header, &montserrat_20_en_ru, 0);
 
   const char *platforms[] = {"VW PQ35/46", "VW PQ25", "VW MQB",
-                             "BMW Exx",    "BMW E46", "BMW Fxx"};
+                             "BMW Exx",    "BMW E46", "BMW Fxx", "rusEFI MRE"};
 
-  for (int i = 0; i < 6; i++) {
+  for (int i = 0; i < 7; i++) {
     lv_obj_t *cb = lv_checkbox_create(ui_Container_PlatformList);
     lv_checkbox_set_text(cb, platforms[i]);
     lv_obj_set_style_text_color(cb, lv_color_white(), 0);
@@ -1030,18 +1039,14 @@ void ui_Screen6_screen_init(void) {
   lv_obj_set_style_bg_color(ui_TextArea_Lua, lv_color_hex(0xFFFFFF), LV_PART_CURSOR);
   lv_obj_set_style_bg_opa(ui_TextArea_Lua, LV_OPA_COVER, LV_PART_CURSOR);
 
-  lv_textarea_set_text(ui_TextArea_Lua,
-    "setTickRate(2)\n"
-    "local counter = 0\n"
-    "canRxAdd(0x123)\n"
-    "function onTick()\n"
-    "    counter = counter + 1\n"
-    "    log(\"onTick work! Counter: \" .. counter)\n"
-    "    txCan(1, 0x600, 0, {counter, 0xAA, 0xBB})\n"
-    "end\n"
-    "function onCanRx(bus, id, dlc, data)\n"
-    "    log(\"Wow, got CAN frame: \" .. id)\n"
-    "end\n");
+  extern const char* lua_manager_get_default_script(void);
+  extern const char* lua_manager_get_background_script(void);
+  const char *bg_script = lua_manager_get_background_script();
+  if (bg_script && bg_script[0]) {
+      lv_textarea_set_text(ui_TextArea_Lua, bg_script);
+  } else {
+      lv_textarea_set_text(ui_TextArea_Lua, lua_manager_get_default_script());
+  }
 
   lv_textarea_set_cursor_click_pos(ui_TextArea_Lua, true);
   lv_obj_add_event_cb(ui_TextArea_Lua, on_lua_focused, LV_EVENT_FOCUSED, NULL);
@@ -1181,6 +1186,7 @@ void ui_Screen6_load_settings(void) {
     show_egt = settings->show_egt;
     show_knock_retard = settings->show_knock_retard;
     show_boost_act = settings->show_boost_act;
+    show_ambient_temp = settings->show_ambient_temp;
 
     // Legacy support: If count is 0 but booleans are true, populate list in
     // default order
@@ -1240,6 +1246,8 @@ void ui_Screen6_load_settings(void) {
         add_gauge_to_list(settings, GAUGE_KNOCK_RETARD);
       if (show_boost_act)
         add_gauge_to_list(settings, GAUGE_BOOST_ACT);
+      if (show_ambient_temp)
+        add_gauge_to_list(settings, GAUGE_AMBIENT_TEMP);
     }
   }
 
@@ -1284,6 +1292,7 @@ void ui_Screen6_save_settings(void) {
     settings->show_egt = show_egt;
     settings->show_knock_retard = show_knock_retard;
     settings->show_boost_act = show_boost_act;
+    settings->show_ambient_temp = show_ambient_temp;
 
     // system_settings_save(settings); // Removed redundant call
   }
@@ -1373,6 +1382,8 @@ void ui_Screen6_update_button_states(void) {
           should_check = show_knock_retard;
         else if (strcmp(txt, "Act Boost") == 0)
           should_check = show_boost_act;
+        else if (strcmp(txt, "Ambient Temp") == 0)
+          should_check = show_ambient_temp;
         else {
           // Fallback to check full list if abbreviated
           if (strcmp(txt, "Wastegate") == 0)
@@ -1447,6 +1458,9 @@ void ui_Screen6_update_button_states(void) {
           should_check = true;
         else if (strcmp(txt, "BMW Fxx") == 0 &&
                  current_plat == PLATFORM_BMW_F_SERIES)
+          should_check = true;
+        else if (strcmp(txt, "rusEFI MRE") == 0 &&
+                 current_plat == PLATFORM_RUSEFI_MRE)
           should_check = true;
 
         if (should_check)

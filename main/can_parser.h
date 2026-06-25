@@ -25,6 +25,9 @@ void parse_can_message(const twai_message_t *message);
 // Function to set the configurable maximum torque value for calculations.
 void can_parser_set_max_torque(float max_torque);
 
+// Transmit ambient temperature onto CAN bus (ID 0x420)
+void can_send_ambient_temp(float temp);
+
 #ifdef __cplusplus
 }
 #endif

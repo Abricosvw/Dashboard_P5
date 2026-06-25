@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "esp_log.h"
 
 static lv_obj_t *ui_Keyboard_Search = NULL;
 
@@ -40,6 +41,8 @@ void *ui_TextArea_Search;
 // void * ui_Slider_UpdateSpeed; // Removed
 // void * ui_Label_UpdateSpeed; // Removed
 void *ui_Panel_FilterList; // Container for ID checkboxes
+lv_obj_t *ui_Checkbox_CAN1 = NULL;
+lv_obj_t *ui_Checkbox_CAN2 = NULL;
 
 // CAN Terminal state
 static int can_message_count = 0;
@@ -57,6 +60,7 @@ static uint8_t last_can_dlc = 0;
 
 typedef struct {
   uint32_t id;
+  uint8_t bus_id;
   int row_index;
   bool visible;
   lv_obj_t *checkbox;
@@ -96,7 +100,7 @@ void ui_clear_can_terminal(void) {
 
         // Set ID cell (showing direction RX by default after clear)
         char id_str[32];
-        snprintf(id_str, sizeof(id_str), "%s | 0x%03X", can_rows[i].is_tx ? "TX" : "RX", (unsigned int)can_rows[i].id);
+        snprintf(id_str, sizeof(id_str), "C%d-%s|0x%03X", (int)can_rows[i].bus_id, can_rows[i].is_tx ? "TX" : "RX", (unsigned int)can_rows[i].id);
         lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, new_table_row, 0, id_str);
 
         // Set Name cell
@@ -127,6 +131,7 @@ static void record_button_event_cb(lv_event_t *e); // New callback
 static void search_text_event_cb(lv_event_t *e);
 // static void update_speed_slider_event_cb(lv_event_t * e); // Removed
 static void filter_checkbox_event_cb(lv_event_t *e);
+static void hw_checkbox_event_cb(lv_event_t *e);
 // static int is_message_matches_search(const char* message);
 
 // CAN Sniffer functions
@@ -283,13 +288,36 @@ static void filter_checkbox_event_cb(lv_event_t *e) {
   if (code == LV_EVENT_VALUE_CHANGED) {
     lv_obj_t *cb = lv_event_get_target(e);
     bool checked = lv_obj_has_state(cb, LV_STATE_CHECKED);
-    uint32_t id = (uint32_t)(uintptr_t)lv_obj_get_user_data(cb);
+    can_row_t *row = (can_row_t *)lv_obj_get_user_data(cb);
+    if (row) {
+      row->visible = checked;
+    }
+  }
+}
 
-    // Update visibility in tracker
-    for (int i = 0; i < can_row_count; i++) {
-      if (can_rows[i].id == id) {
-        can_rows[i].visible = checked;
-        break;
+// Hardware checkbox event callback
+static void hw_checkbox_event_cb(lv_event_t *e) {
+  lv_event_code_t code = lv_event_get_code(e);
+  if (code == LV_EVENT_VALUE_CHANGED) {
+    lv_obj_t *cb = lv_event_get_target(e);
+    bool checked = lv_obj_has_state(cb, LV_STATE_CHECKED);
+    int bus = (int)(uintptr_t)lv_event_get_user_data(e);
+
+    if (bus == 1 && g_can1_handle) {
+      if (checked) {
+        twai_start_v2(g_can1_handle);
+        ESP_LOGI("UI_SCREEN3", "CAN1 (TWAI0) hardware started");
+      } else {
+        twai_stop_v2(g_can1_handle);
+        ESP_LOGI("UI_SCREEN3", "CAN1 (TWAI0) hardware stopped");
+      }
+    } else if (bus == 2 && g_can2_handle) {
+      if (checked) {
+        twai_start_v2(g_can2_handle);
+        ESP_LOGI("UI_SCREEN3", "CAN2 (TWAI1) hardware started");
+      } else {
+        twai_stop_v2(g_can2_handle);
+        ESP_LOGI("UI_SCREEN3", "CAN2 (TWAI1) hardware stopped");
       }
     }
   }
@@ -491,6 +519,37 @@ void ui_Screen3_screen_init(void) {
   lv_obj_set_style_text_font(rec_label, &lv_font_montserrat_12, 0);
   lv_obj_center(rec_label);
 
+  // --- CAN Hardware control row ---
+  lv_obj_t *hw_cont = lv_obj_create(right_panel);
+  lv_obj_remove_style_all(hw_cont);
+  lv_obj_set_width(hw_cont, LV_PCT(100));
+  lv_obj_set_height(hw_cont, LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(hw_cont, LV_FLEX_FLOW_ROW);
+  lv_obj_set_style_pad_gap(hw_cont, 15, 0);
+  lv_obj_set_flex_align(hw_cont, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                        LV_FLEX_ALIGN_CENTER);
+
+  lv_obj_t *hw_label = lv_label_create(hw_cont);
+  lv_label_set_text(hw_label, "CAN HW:");
+  lv_obj_set_style_text_color(hw_label, lv_color_hex(0x00D4FF), 0);
+  lv_obj_set_style_text_font(hw_label, &lv_font_montserrat_12, 0);
+
+  // Checkbox CAN1
+  ui_Checkbox_CAN1 = lv_checkbox_create(hw_cont);
+  lv_checkbox_set_text(ui_Checkbox_CAN1, "CAN1 (PT)");
+  lv_obj_add_state(ui_Checkbox_CAN1, LV_STATE_CHECKED);
+  lv_obj_set_style_text_color(ui_Checkbox_CAN1, lv_color_white(), 0);
+  lv_obj_set_style_text_font(ui_Checkbox_CAN1, &lv_font_montserrat_12, 0);
+  lv_obj_add_event_cb(ui_Checkbox_CAN1, hw_checkbox_event_cb, LV_EVENT_VALUE_CHANGED, (void*)1);
+
+  // Checkbox CAN2
+  ui_Checkbox_CAN2 = lv_checkbox_create(hw_cont);
+  lv_checkbox_set_text(ui_Checkbox_CAN2, "CAN2 (Diag)");
+  lv_obj_add_state(ui_Checkbox_CAN2, LV_STATE_CHECKED);
+  lv_obj_set_style_text_color(ui_Checkbox_CAN2, lv_color_white(), 0);
+  lv_obj_set_style_text_font(ui_Checkbox_CAN2, &lv_font_montserrat_12, 0);
+  lv_obj_add_event_cb(ui_Checkbox_CAN2, hw_checkbox_event_cb, LV_EVENT_VALUE_CHANGED, (void*)2);
+
   // --- Search row ---
   lv_obj_t *search_cont = lv_obj_create(right_panel);
   lv_obj_remove_style_all(search_cont);
@@ -559,9 +618,8 @@ void ui_Screen3_screen_init(void) {
 // Destroy Screen3
 void ui_Screen3_screen_destroy(void) { lv_obj_del(ui_Screen3); }
 
-// Add/Update CAN message in table
-// Add/Update CAN message in table (ext version supporting direction RX/TX)
-void ui_add_can_message_ext(uint32_t id, uint8_t *data, uint8_t dlc, bool is_tx) {
+// Add/Update CAN message in table (ext version supporting direction RX/TX and Bus ID)
+void ui_add_can_message_ext_bus(uint8_t bus_id, uint32_t id, uint8_t *data, uint8_t dlc, bool is_tx) {
   if (!ui_Table_CAN_List)
     return;
 
@@ -570,7 +628,7 @@ void ui_add_can_message_ext(uint32_t id, uint8_t *data, uint8_t dlc, bool is_tx)
 
   // Find existing row
   for (int i = 0; i < can_row_count; i++) {
-    if (can_rows[i].id == id) {
+    if (can_rows[i].id == id && can_rows[i].bus_id == bus_id) {
       // Check if ID is filtered out
       if (!can_rows[i].visible)
         return;
@@ -611,7 +669,7 @@ void ui_add_can_message_ext(uint32_t id, uint8_t *data, uint8_t dlc, bool is_tx)
 
         // Set ID cell
         char id_str[32];
-        snprintf(id_str, sizeof(id_str), "%s | 0x%03X", is_tx ? "TX" : "RX", (unsigned int)id);
+        snprintf(id_str, sizeof(id_str), "C%d-%s|0x%03X", (int)bus_id, is_tx ? "TX" : "RX", (unsigned int)id);
         lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, row_idx, 0, id_str);
 
         // Set Name cell
@@ -631,6 +689,7 @@ void ui_add_can_message_ext(uint32_t id, uint8_t *data, uint8_t dlc, bool is_tx)
 
     // Add to tracker
     can_rows[can_row_count].id = id;
+    can_rows[can_row_count].bus_id = bus_id;
     can_rows[can_row_count].visible = true; // Visible by default
     can_rows[can_row_count].last_update_time = now;
     can_rows[can_row_count].last_recv_time = now;
@@ -647,16 +706,16 @@ void ui_add_can_message_ext(uint32_t id, uint8_t *data, uint8_t dlc, bool is_tx)
     // Create checkbox in filter list
     if (ui_Panel_FilterList) {
       lv_obj_t *cb = lv_checkbox_create((lv_obj_t *)ui_Panel_FilterList);
-      char cb_text[16];
-      snprintf(cb_text, sizeof(cb_text), "%03X",
-               (unsigned int)id); // Format: 101
+      char cb_text[32];
+      snprintf(cb_text, sizeof(cb_text), "C%d-%03X",
+               (int)bus_id, (unsigned int)id);
       lv_checkbox_set_text(cb, cb_text);
       lv_obj_add_state(cb, LV_STATE_CHECKED);
       lv_obj_set_style_text_color(cb, lv_color_white(), 0);
       lv_obj_set_style_text_font(cb, &lv_font_montserrat_12, 0);
       lv_obj_add_event_cb(cb, filter_checkbox_event_cb, LV_EVENT_VALUE_CHANGED,
                           NULL);
-      lv_obj_set_user_data(cb, (void *)(uintptr_t)id); // Store ID in user data
+      lv_obj_set_user_data(cb, &can_rows[can_row_count]); // Store row pointer in user data
       can_rows[can_row_count].checkbox = cb;
     }
 
@@ -664,7 +723,7 @@ void ui_add_can_message_ext(uint32_t id, uint8_t *data, uint8_t dlc, bool is_tx)
 
     // Set ID cell once
     char id_str[32];
-    snprintf(id_str, sizeof(id_str), "%s | 0x%03X", is_tx ? "TX" : "RX", (unsigned int)id);
+    snprintf(id_str, sizeof(id_str), "C%d-%s|0x%03X", (int)bus_id, is_tx ? "TX" : "RX", (unsigned int)id);
     lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, row_idx, 0, id_str);
 
     // Set Name cell once
@@ -678,7 +737,7 @@ void ui_add_can_message_ext(uint32_t id, uint8_t *data, uint8_t dlc, bool is_tx)
   float current_cycle = 0.0f;
   bool current_is_tx = false;
   for (int i = 0; i < can_row_count; i++) {
-    if (can_rows[i].id == id) {
+    if (can_rows[i].id == id && can_rows[i].bus_id == bus_id) {
       is_visible = can_rows[i].visible;
       current_count = can_rows[i].count;
       current_cycle = can_rows[i].cycle_time;
@@ -692,7 +751,7 @@ void ui_add_can_message_ext(uint32_t id, uint8_t *data, uint8_t dlc, bool is_tx)
 
   // Update ID (Direction could change dynamically if the ID is both RX and TX)
   char id_str[32];
-  snprintf(id_str, sizeof(id_str), "%s | 0x%03X", current_is_tx ? "TX" : "RX", (unsigned int)id);
+  snprintf(id_str, sizeof(id_str), "C%d-%s|0x%03X", (int)bus_id, current_is_tx ? "TX" : "RX", (unsigned int)id);
   lv_table_set_cell_value((lv_obj_t *)ui_Table_CAN_List, row_idx, 0, id_str);
 
   // Update DLC
@@ -730,6 +789,10 @@ void ui_add_can_message_ext(uint32_t id, uint8_t *data, uint8_t dlc, bool is_tx)
   char count_text[32];
   snprintf(count_text, sizeof(count_text), "Messages: %d", can_message_count);
   lv_label_set_text((lv_obj_t *)ui_Label_CAN_Count, count_text);
+}
+
+void ui_add_can_message_ext(uint32_t id, uint8_t *data, uint8_t dlc, bool is_tx) {
+  ui_add_can_message_ext_bus(1, id, data, dlc, is_tx);
 }
 
 void ui_add_can_message(uint32_t id, uint8_t *data, uint8_t dlc) {
@@ -789,11 +852,8 @@ void ui_reset_can_statistics(void) {
 // CAN SNIFFER FUNCTIONS
 // ============================================================================
 
-// Add CAN message to terminal with filtering and search
 // Process CAN message for terminal and logger (Called from CAN task)
-// Add CAN message to terminal with filtering and search
-// Process CAN message for terminal and logger (Called from CAN task)
-void ui_process_real_can_message_ext(uint32_t id, uint8_t *data, uint8_t dlc, bool is_tx) {
+void ui_process_real_can_message_bus(uint8_t bus_id, uint32_t id, uint8_t *data, uint8_t dlc, bool is_tx) {
   if (!can_sniffer_active)
     return;
 
@@ -802,14 +862,14 @@ void ui_process_real_can_message_ext(uint32_t id, uint8_t *data, uint8_t dlc, bo
     return;
 
   // Log to SD card if recording
-  can_logger_log(id, (uint8_t *)data, dlc);
+  can_logger_log_bus(bus_id, id, (uint8_t *)data, dlc);
 
   // Check if search term matches
   if (!can_sniffer_search_in_data((uint8_t *)data, dlc, search_text))
     return;
 
   // Add to terminal (Table)
-  ui_add_can_message_ext(id, (uint8_t *)data, dlc, is_tx);
+  ui_add_can_message_ext_bus(bus_id, id, (uint8_t *)data, dlc, is_tx);
 
   // Update statistics
   can_sniffer_update_statistics(id);
@@ -818,6 +878,10 @@ void ui_process_real_can_message_ext(uint32_t id, uint8_t *data, uint8_t dlc, bo
   last_can_id = id;
   last_can_dlc = dlc;
   memcpy(last_can_data, data, dlc > 8 ? 8 : dlc);
+}
+
+void ui_process_real_can_message_ext(uint32_t id, uint8_t *data, uint8_t dlc, bool is_tx) {
+  ui_process_real_can_message_bus(1, id, data, dlc, is_tx);
 }
 
 void ui_process_real_can_message(uint32_t id, uint8_t *data, uint8_t dlc) {

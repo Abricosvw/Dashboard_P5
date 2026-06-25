@@ -118,6 +118,7 @@ const char *get_can_id_name(uint32_t id) {
 typedef struct {
   uint32_t timestamp;
   uint32_t id;
+  uint8_t bus_id;
   uint8_t dlc;
   uint8_t data[8];
 } can_log_msg_t;
@@ -145,18 +146,18 @@ static void can_logger_task(void *arg) {
   while (1) {
     if (xQueueReceive(log_queue, &msg, pdMS_TO_TICKS(100)) == pdTRUE) {
       if (is_recording) {
-        // Format: Timestamp(ms),ID(hex),Name,DLC,Data(hex)\n
+        // Format: Timestamp(ms),Bus,ID(hex),Name,DLC,Data(hex)\n
         const char *name = get_can_id_name(msg.id);
         int len;
         if (name) {
           len = snprintf(log_buffer + buffer_index,
-                         LOG_BUFFER_SIZE - buffer_index, "%lu,%03X,%s,%d,",
-                         (unsigned long)msg.timestamp, (unsigned int)msg.id,
+                         LOG_BUFFER_SIZE - buffer_index, "%lu,CAN%d,%03X,%s,%d,",
+                         (unsigned long)msg.timestamp, (int)msg.bus_id, (unsigned int)msg.id,
                          name, msg.dlc);
         } else {
           len = snprintf(log_buffer + buffer_index,
-                         LOG_BUFFER_SIZE - buffer_index, "%lu,%03X,,%d,",
-                         (unsigned long)msg.timestamp, (unsigned int)msg.id,
+                         LOG_BUFFER_SIZE - buffer_index, "%lu,CAN%d,%03X,,%d,",
+                         (unsigned long)msg.timestamp, (int)msg.bus_id, (unsigned int)msg.id,
                          msg.dlc);
         }
 
@@ -201,6 +202,11 @@ void can_logger_init(void) {
 }
 
 void can_logger_start(void) {
+  if (log_queue == NULL) {
+    ESP_LOGE(TAG, "CAN logger not initialized!");
+    return;
+  }
+
   if (is_recording)
     return;
 
@@ -228,7 +234,7 @@ void can_logger_start(void) {
     buffer_index = 0;
 
     // Write header
-    fprintf(log_file, "Timestamp,ID,Name,DLC,Data\n");
+    fprintf(log_file, "Timestamp,Bus,ID,Name,DLC,Data\n");
   } else {
     ESP_LOGE(TAG, "Failed to open log file");
   }
@@ -251,18 +257,23 @@ void can_logger_stop(void) {
   ESP_LOGI(TAG, "Logging stopped");
 }
 
-void can_logger_log(uint32_t id, uint8_t *data, uint8_t dlc) {
-  if (!is_recording)
+void can_logger_log_bus(uint8_t bus_id, uint32_t id, uint8_t *data, uint8_t dlc) {
+  if (!is_recording || log_queue == NULL)
     return;
 
   can_log_msg_t msg;
   msg.timestamp = (uint32_t)(esp_timer_get_time() / 1000);
   msg.id = id;
+  msg.bus_id = bus_id;
   msg.dlc = dlc;
   memcpy(msg.data, data, dlc > 8 ? 8 : dlc);
 
   // Send to queue (non-blocking)
   xQueueSend(log_queue, &msg, 0);
+}
+
+void can_logger_log(uint32_t id, uint8_t *data, uint8_t dlc) {
+  can_logger_log_bus(1, id, data, dlc);
 }
 
 bool can_logger_is_recording(void) { return is_recording; }

@@ -91,6 +91,19 @@ void ecu_data_update(ecu_data_t *data) {
   }
 }
 
+// Update ECU data transaction (thread-safe and protects against read-modify-write overwrite race conditions)
+void ecu_data_update_transaction(ecu_data_update_fn_t update_fn, void *ctx) {
+  if (!update_fn || !ecu_data_mutex)
+    return;
+
+  if (xSemaphoreTake(ecu_data_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+    update_fn(&g_ecu_data, ctx);
+    g_ecu_data.timestamp = esp_timer_get_time() / 1000; // milliseconds
+
+    xSemaphoreGive(ecu_data_mutex);
+  }
+}
+
 // Get current ECU data (thread-safe)
 ecu_data_t *ecu_data_get(void) {
   return &g_ecu_data; // For now, return direct pointer (should be protected by
@@ -153,6 +166,7 @@ void ecu_data_simulate(ecu_data_t *data) {
   data->afr_val = data->afr_target + 0.02f * sin(sim_time * 2.0f);
   data->egt_temp = 350.0f + 250.0f * (data->engine_rpm / 3800.0f) + 50.0f * sin(sim_time * 0.5f);
   data->knock_retard = (data->engine_rpm > 3000.0f) ? (float)(fmod(sim_time, 3.0f) > 2.0f ? 2.5f : 0.0f) : 0.0f;
+  data->ambient_temp = 18.0f + 5.0f * sin(sim_time * 0.05f);
 
   data->timestamp = esp_timer_get_time() / 1000;
 }

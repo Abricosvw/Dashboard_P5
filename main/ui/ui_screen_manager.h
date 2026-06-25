@@ -20,7 +20,9 @@ typedef enum {
   SCREEN_6 = 5, // Device Parameters Settings
   SCREEN_7 = 6, // Open Claw AI Terminal
   SCREEN_8 = 7, // Luxury Sport Dashboard (New)
-  SCREEN_9 = 8  // Air to Water Intercooler (New)
+  SCREEN_9 = 8, // Air to Water Intercooler (New)
+  SCREEN_10 = 9, // Wastegate & Blow-off Control (New)
+  SCREEN_11 = 10 // VAG Diagnostic Scanner (New)
 } screen_id_t;
 
 // Screen management functions

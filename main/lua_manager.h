@@ -17,6 +17,12 @@ esp_err_t lua_manager_execute(const char *script);
 // Save and run a Lua script in the background
 esp_err_t lua_manager_save_background_script(const char *script);
 
+// Get the currently running background script
+const char* lua_manager_get_background_script(void);
+
+// Get the embedded default Lua script
+const char* lua_manager_get_default_script(void);
+
 // Get the dynamically generated help text for available Lua functions
 const char* lua_manager_get_help_text(void);
 

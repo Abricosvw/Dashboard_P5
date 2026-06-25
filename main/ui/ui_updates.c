@@ -4,6 +4,8 @@
 #include "screens/ui_Screen6.h"
 #include "screens/ui_Screen8.h"
 #include "screens/ui_Screen9.h"
+#include "screens/ui_Screen10.h"
+#include "screens/ui_Screen11.h"
 #include "ui.h"
 #include "wifi_controller.h"
 #include <stdio.h>
@@ -59,6 +61,9 @@ void update_gauge(gauge_id_t id, lv_obj_t *arc, lv_obj_t *label, float value,
   } else if (id == GAUGE_IAT) {
     base_min = 0.0f;
     base_max = 100.0f;
+  } else if (id == GAUGE_AMBIENT_TEMP) {
+    base_min = -20.0f;
+    base_max = 60.0f;
   } else if (id == GAUGE_EGT) {
     base_min = 200.0f;
     base_max = 1000.0f;
@@ -109,7 +114,7 @@ void update_gauge(gauge_id_t id, lv_obj_t *arc, lv_obj_t *label, float value,
       arc_max = (int16_t)base_max;
       use_custom_arc_range = true;
     }
-  } else if (id == GAUGE_OIL_TEMP || id == GAUGE_WATER_TEMP || id == GAUGE_IAT || id == GAUGE_TRANS_TEMP || id == GAUGE_EGT) {
+  } else if (id == GAUGE_OIL_TEMP || id == GAUGE_WATER_TEMP || id == GAUGE_IAT || id == GAUGE_TRANS_TEMP || id == GAUGE_EGT || id == GAUGE_AMBIENT_TEMP) {
     if (unit == UNIT_FAHRENHEIT) {
       converted_value = value * 1.8f + 32.0f;
       converted_warn = warn_thr * 1.8f + 32.0f;
@@ -288,9 +293,15 @@ void update_all_gauges(void) {
     ecu_data_get_copy(&data);
   }
 
+  // Override ambient temp if we are transmitting it
+  system_settings_t *settings = system_settings_get();
+  if (settings && settings->send_ambient_temp_to_can) {
+    data.ambient_temp = settings->ambient_can_temp;
+  }
+
   // --- Screen 1 ---
-  // MAP: Cyan. Warn: 1500, Crit: 1800
-  update_gauge(GAUGE_MAP, ui_Arc_MAP, ui_Label_MAP_Value, data.map_kpa, "%.0f", 1500, 1800,
+  // MAP: Cyan. Warn: 200, Crit: 230
+  update_gauge(GAUGE_MAP, ui_Arc_MAP, ui_Label_MAP_Value, data.map_kpa, "%.0f", 200, 230,
                false, lv_color_hex(0x00D4FF));
 
   // RPM: Cyan. Warn: 7500, Crit: 9000
@@ -378,52 +389,68 @@ void update_all_gauges(void) {
                3.0f, 6.0f, false, lv_color_hex(0xFFCC00));
   update_gauge(GAUGE_BOOST_ACT, ui_Arc_Boost_Act, ui_Label_Boost_Act_Value, data.map_kpa, "%.0f",
                200, 230, false, lv_color_hex(0x00D4FF));
+  update_gauge(GAUGE_AMBIENT_TEMP, ui_Arc_Ambient_Temp, ui_Label_Ambient_Temp_Value, data.ambient_temp, "%.0f",
+               45, 55, false, lv_color_hex(0x00FF88));
+
+  // Periodic send of ambient temp if enabled (every 1.0s = 10 calls of 100ms update loop)
+  static int send_can_counter = 0;
+  send_can_counter++;
+  if (send_can_counter >= 10) {
+    send_can_counter = 0;
+    system_settings_t *settings = system_settings_get();
+    if (settings && settings->send_ambient_temp_to_can) {
+      extern void can_send_ambient_temp(float temp);
+      can_send_ambient_temp(data.ambient_temp);
+    }
+  }
 
   // --- Gear Display (Screen 4) ---
+  char gear_str[16] = "N/A";
+  if (data.gear == 14) {
+    strcpy(gear_str, "P");
+  } else if (data.gear == 12) {
+    strcpy(gear_str, "R");
+  } else if (data.gear == 13) {
+    strcpy(gear_str, "N");
+  } else if (data.gear >= 2 && data.gear <= 10) {
+    snprintf(gear_str, sizeof(gear_str), "%d", data.gear - 1);
+  } else if (data.gear == 0) {
+    strcpy(gear_str, "-");
+  } else {
+    snprintf(gear_str, sizeof(gear_str), "%d", data.gear);
+  }
+
   if (ui_Label_Gear) {
-    char gear_buf[16];
-    if (data.gear == 0)
-      snprintf(gear_buf, sizeof(gear_buf), "Gear: P");
-    else if (data.gear == 13)
-      snprintf(gear_buf, sizeof(gear_buf),
-               "Gear: R"); // 13 is often Reverse in ZF/VAG
-    else if (data.gear == 14)
-      snprintf(gear_buf, sizeof(gear_buf), "Gear: N"); // 14 is often Neutral
-    else
-      snprintf(gear_buf, sizeof(gear_buf), "Gear: %d", data.gear);
+    char gear_buf[32];
+    snprintf(gear_buf, sizeof(gear_buf), "Gear: %s", gear_str);
     lv_label_set_text(ui_Label_Gear, gear_buf);
   }
 
   // --- Screen 1 TCU Box ---
   if (ui_Label_Gear_S1) {
-    char gear_buf[16];
-    if (data.gear == 0)
-      snprintf(gear_buf, sizeof(gear_buf), "Gear: P");
-    else if (data.gear == 13)
-      snprintf(gear_buf, sizeof(gear_buf), "Gear: R");
-    else if (data.gear == 14)
-      snprintf(gear_buf, sizeof(gear_buf), "Gear: N");
-    else
-      snprintf(gear_buf, sizeof(gear_buf), "Gear: %d", data.gear);
+    char gear_buf[32];
+    snprintf(gear_buf, sizeof(gear_buf), "Gear: %s", gear_str);
     lv_label_set_text(ui_Label_Gear_S1, gear_buf);
   }
 
   if (ui_Label_Selector_S1) {
-    char sel_buf[16];
-    // Selector mapping (example VAG): P=0, R=1, N=2, D=3, S=4
-    // If unknown, show raw
-    if (data.selector_position == 0)
-      snprintf(sel_buf, sizeof(sel_buf), "Sel: P");
-    else if (data.selector_position == 1)
-      snprintf(sel_buf, sizeof(sel_buf), "Sel: R");
-    else if (data.selector_position == 2)
-      snprintf(sel_buf, sizeof(sel_buf), "Sel: N");
-    else if (data.selector_position == 3)
-      snprintf(sel_buf, sizeof(sel_buf), "Sel: D");
-    else if (data.selector_position == 4)
-      snprintf(sel_buf, sizeof(sel_buf), "Sel: S");
-    else
-      snprintf(sel_buf, sizeof(sel_buf), "Sel: %d", data.selector_position);
+    char sel_str[16] = "-";
+    if (data.selector_position == 2) {
+      strcpy(sel_str, "P");
+    } else if (data.selector_position == 3) {
+      strcpy(sel_str, "R");
+    } else if (data.selector_position == 4) {
+      strcpy(sel_str, "N");
+    } else if (data.selector_position == 5) {
+      strcpy(sel_str, "D");
+    } else if (data.selector_position == 6) {
+      strcpy(sel_str, "S");
+    } else {
+      snprintf(sel_str, sizeof(sel_str), "%d", data.selector_position);
+    }
+
+    char sel_buf[32];
+    snprintf(sel_buf, sizeof(sel_buf), "Sel: %s", sel_str);
     lv_label_set_text(ui_Label_Selector_S1, sel_buf);
   }
 
@@ -488,20 +515,17 @@ void update_all_gauges(void) {
   // stick to the simple logical label if exposed. Ideally, ui_Screen8_update()
   // should handle local widget logic. But for now, we'll leave it as is.
   if (ui_Label_Gear_S8) {
-    char gear_buf[8];
-    if (data.gear == 0)
-      snprintf(gear_buf, sizeof(gear_buf), "P");
-    else if (data.gear == 13)
-      snprintf(gear_buf, sizeof(gear_buf), "R");
-    else if (data.gear == 14)
-      snprintf(gear_buf, sizeof(gear_buf), "N");
-    else
-      snprintf(gear_buf, sizeof(gear_buf), "%d", data.gear);
-    lv_label_set_text(ui_Label_Gear_S8, gear_buf);
+    lv_label_set_text(ui_Label_Gear_S8, gear_str);
   }
 
   // AI status is now handled via ui_Screen7_set_status() called from ai_manager
 
   // --- Screen 9 (Intercooler Controls) ---
   ui_Screen9_update();
+
+  // --- Screen 10 (Boost & Blow-off Controls) ---
+  ui_Screen10_update();
+
+  // --- Screen 11 (VAG Diagnostic Scanner) ---
+  ui_Screen11_update();
 }
