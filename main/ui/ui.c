@@ -105,6 +105,7 @@ void ui_destroy(void) {
   ui_Screen9_screen_destroy();
   ui_Screen10_screen_destroy();
   ui_Screen11_screen_destroy();
+  ui_Screen12_screen_destroy();
 }
 
 /**

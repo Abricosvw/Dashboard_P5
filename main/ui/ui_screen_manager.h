@@ -22,7 +22,8 @@ typedef enum {
   SCREEN_8 = 7, // Luxury Sport Dashboard (New)
   SCREEN_9 = 8, // Air to Water Intercooler (New)
   SCREEN_10 = 9, // Wastegate & Blow-off Control (New)
-  SCREEN_11 = 10 // VAG Diagnostic Scanner (New)
+  SCREEN_11 = 10, // VAG Diagnostic Scanner (New)
+  SCREEN_12 = 11 // VAG Launch Control Diagnostics (New)
 } screen_id_t;
 
 // Screen management functions

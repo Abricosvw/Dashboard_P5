@@ -12,8 +12,14 @@ extern "C" {
 extern lv_obj_t *ui_Screen10;
 
 // Header live parameters
-extern lv_obj_t *ui_Screen10_Boost_Val;
-extern lv_obj_t *ui_Screen10_RPM_Val;
+extern lv_obj_t *ui_Screen10_MAP_Val;
+extern lv_obj_t *ui_Screen10_IAT_Val;
+
+// MRE Gauges in Blow-Off Panel
+extern lv_obj_t *ui_Arc_MRE_MAP_Screen10;
+extern lv_obj_t *ui_Label_MRE_MAP_Value_Screen10;
+extern lv_obj_t *ui_Arc_MRE_Wastegate_Screen10;
+extern lv_obj_t *ui_Label_MRE_Wastegate_Value_Screen10;
 
 // Wastegate VGT elements
 extern lv_obj_t *ui_Wg_Actual_Bar;
@@ -22,6 +28,16 @@ extern lv_obj_t *ui_Wg_Mode_Auto_Btn;
 extern lv_obj_t *ui_Wg_Mode_Man_Btn;
 extern lv_obj_t *ui_Wg_Slider;
 extern lv_obj_t *ui_Wg_Slider_Label;
+extern lv_obj_t *ui_Wg_Invert_Switch;
+
+// DSG Mode Indicator elements
+extern lv_obj_t *ui_Mode_Panel;
+extern lv_obj_t *ui_Mode_Val_Label;
+extern lv_obj_t *ui_Mode_Info_Boost_Val;
+extern lv_obj_t *ui_Mode_Info_Tps_Val;
+extern lv_obj_t *ui_Mode_Info_Delta_Val;
+extern lv_obj_t *ui_Mode_Info_Hold_Val;
+extern lv_obj_t *ui_Mode_Info_Bypass_Val;
 
 // Blow-off Solenoid elements
 extern lv_obj_t *ui_Bov_State_Label;
@@ -51,6 +67,8 @@ bool ui_Screen10_get_wg_is_auto(void);
 void ui_Screen10_set_wg_is_auto(bool is_auto);
 int ui_Screen10_get_wg_manual_pos(void);
 void ui_Screen10_set_wg_manual_pos(int pos);
+bool ui_Screen10_get_wg_is_inverted(void);
+void ui_Screen10_set_wg_is_inverted(bool inverted);
 
 int ui_Screen10_get_wg_map_rpm(int idx);
 void ui_Screen10_set_wg_map_rpm(int idx, int rpm);

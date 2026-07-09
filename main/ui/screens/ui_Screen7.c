@@ -443,14 +443,14 @@ void ui_Screen7_screen_init(void) {
   lv_label_set_text(title_label, LV_SYMBOL_SETTINGS " Open Claw");
   lv_obj_set_style_text_color(title_label, lv_color_hex(CLR_ACCENT), 0);
   lv_obj_set_style_text_font(title_label, &montserrat_20_en_ru, 0);
-  lv_obj_align(title_label, LV_ALIGN_LEFT_MID, 16, -2);
+  lv_obj_align(title_label, LV_ALIGN_LEFT_MID, 8, -2);
 
   // --- Terminal area ---
   int terminal_h = 776; // Expanded height since Lua editor is moved
 
   ui_Screen7_Terminal = lv_textarea_create(ui_Screen7);
   lv_obj_set_size(ui_Screen7_Terminal, SCR_W - 16, terminal_h);
-  lv_obj_set_pos(ui_Screen7_Terminal, 8, TERMINAL_TOP);
+  lv_obj_set_pos(ui_Screen7_Terminal, 0, TERMINAL_TOP);
   lv_textarea_set_text(ui_Screen7_Terminal, terminal_buf);
   lv_textarea_set_cursor_click_pos(ui_Screen7_Terminal, false);
   lv_obj_clear_flag(ui_Screen7_Terminal, LV_OBJ_FLAG_CLICKABLE);
@@ -475,30 +475,30 @@ void ui_Screen7_screen_init(void) {
 
   lv_obj_t *btn_clear2 = create_quick_btn(ui_Screen7, LV_SYMBOL_TRASH " Clr",
                                           on_clear_clicked, btn_w);
-  lv_obj_set_pos(btn_clear2, 8, btn_term_y);
+  lv_obj_set_pos(btn_clear2, 0, btn_term_y);
 
   lv_obj_t *btn_status2 = create_quick_btn(ui_Screen7, LV_SYMBOL_CHARGE " Stat",
                                            on_status_clicked, btn_w);
-  lv_obj_set_pos(btn_status2, 8 + (btn_w + 4) * 1, btn_term_y);
+  lv_obj_set_pos(btn_status2, 0 + (btn_w + 4) * 1, btn_term_y);
 
   lv_obj_t *btn_skills2 = create_quick_btn(ui_Screen7, LV_SYMBOL_LIST " Skls",
                                            on_skills_clicked, btn_w);
-  lv_obj_set_pos(btn_skills2, 8 + (btn_w + 4) * 2, btn_term_y);
+  lv_obj_set_pos(btn_skills2, 0 + (btn_w + 4) * 2, btn_term_y);
 
   lv_obj_t *btn_sched2 = create_quick_btn(ui_Screen7, LV_SYMBOL_REFRESH " Scd",
                                           on_schedule_clicked, btn_w);
-  lv_obj_set_pos(btn_sched2, 8 + (btn_w + 4) * 3, btn_term_y);
+  lv_obj_set_pos(btn_sched2, 0 + (btn_w + 4) * 3, btn_term_y);
 
   lv_obj_t *btn_files2 = create_quick_btn(
       ui_Screen7, LV_SYMBOL_DIRECTORY " Fls", on_files_clicked, btn_w);
-  lv_obj_set_pos(btn_files2, 8 + (btn_w + 4) * 4, btn_term_y);
+  lv_obj_set_pos(btn_files2, 0 + (btn_w + 4) * 4, btn_term_y);
 
   // --- Input row (text field + send button) ---
   input_y = btn_term_y + BTN_ROW_H + 50;
 
   ui_Screen7_Input = lv_textarea_create(ui_Screen7);
   lv_obj_set_size(ui_Screen7_Input, SCR_W - 100, INPUT_H);
-  lv_obj_set_pos(ui_Screen7_Input, 8, input_y);
+  lv_obj_set_pos(ui_Screen7_Input, 0, input_y);
   lv_textarea_set_placeholder_text(ui_Screen7_Input,
                                    "Введите запрос для ИИ...");
   lv_textarea_set_one_line(ui_Screen7_Input, true);
@@ -522,7 +522,7 @@ void ui_Screen7_screen_init(void) {
   // Send button
   btn_send = lv_obj_create(ui_Screen7);
   lv_obj_set_size(btn_send, 80, INPUT_H);
-  lv_obj_set_pos(btn_send, SCR_W - 88, input_y);
+  lv_obj_set_pos(btn_send, SCR_W - 96, input_y);
   lv_obj_set_style_bg_color(btn_send, lv_color_hex(CLR_SEND), 0);
   lv_obj_set_style_bg_opa(btn_send, LV_OPA_COVER, 0);
   lv_obj_set_style_radius(btn_send, 0, 0);
@@ -554,7 +554,7 @@ void ui_Screen7_screen_init(void) {
   status_label = lv_label_create(ui_Screen7);
   lv_label_set_text(status_label, "AI: System Ready (Gemini)");
   lv_obj_set_size(status_label, 560, 30);
-  lv_obj_set_pos(status_label, (SCR_W - 560) / 2, input_y + INPUT_H + 6);
+  lv_obj_set_pos(status_label, (SCR_W - 560) / 2 - 8, input_y + INPUT_H + 6);
   lv_obj_set_style_text_color(status_label, lv_color_hex(CLR_TEXT_DIM), 0);
   lv_obj_set_style_text_font(status_label, &montserrat_20_en_ru, 0);
   lv_label_set_long_mode(status_label, LV_LABEL_LONG_SCROLL_CIRCULAR);

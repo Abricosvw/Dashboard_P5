@@ -51,9 +51,9 @@ static const struct {
 ai_cmd_result_t ai_cmd_switch_screen(int screen_number) {
   ai_cmd_result_t result = {.success = false, .message = ""};
 
-  if (screen_number < 1 || screen_number > 11) {
+  if (screen_number < 1 || screen_number > 12) {
     snprintf(result.message, sizeof(result.message),
-             "Ошибка: экран %d не существует. Доступны экраны 1-11.",
+             "Ошибка: экран %d не существует. Доступны экраны 1-12.",
              screen_number);
     return result;
   }
@@ -210,16 +210,27 @@ ai_cmd_result_t ai_cmd_get_ecu_data(void) {
   ai_cmd_result_t result = {.success = true, .message = ""};
   ecu_data_t data;
   ecu_data_get_copy(&data);
-  
+
+  // Evaluate launch control conditions locally
+  int lc_met = 0;
+  if (data.gear_lever_val == 12) lc_met++;
+  if (data.vehicle_speed < 1.0f) lc_met++;
+  if (data.pedal_position > 80.0f) lc_met++;
+  if (data.brake_status == 3) lc_met++;
+  if (data.tcu_torque_intervention) lc_met++;
+
   snprintf(result.message, sizeof(result.message),
            "Текущие данные автомобиля:\n"
            "Обороты: %.0f об/мин\n"
            "Температура ОЖ: %.0f°C\n"
            "Давление во впуске: %.2f кПа\n"
            "Батарея: %.1f В\n"
-           "Скорость: %.0f км/ч",
-           data.engine_rpm, data.clt_temp, data.map_kpa, 
-           data.battery_voltage, data.vehicle_speed);
+           "Скорость: %.0f км/ч\n"
+           "Launch Control: %s (%d/5)",
+           data.engine_rpm, data.clt_temp, data.map_kpa,
+           data.battery_voltage, data.vehicle_speed,
+           lc_met == 5 ? "ACTIVE" : (lc_met > 0 ? "PRELAUNCH" : "STANDBY"),
+           lc_met);
   return result;
 }
 

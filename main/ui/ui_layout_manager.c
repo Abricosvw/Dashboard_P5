@@ -149,6 +149,8 @@ void ui_update_global_layout(void) {
       {&ui_Arc_Knock_Retard, &settings->show_knock_retard},
       {&ui_Arc_Boost_Act, &settings->show_boost_act},
       {&ui_Arc_Ambient_Temp, &settings->show_ambient_temp},
+      {&ui_Arc_MRE_MAP, &settings->show_mre_map},
+      {&ui_Arc_MRE_Wastegate, &settings->show_mre_wastegate},
   };
   int total_gauges = sizeof(gauges) / sizeof(gauges[0]);
 

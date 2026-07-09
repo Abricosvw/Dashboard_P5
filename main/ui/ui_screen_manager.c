@@ -12,6 +12,7 @@
 #include "screens/ui_Screen9.h"
 #include "screens/ui_Screen10.h"
 #include "screens/ui_Screen11.h"
+#include "screens/ui_Screen12.h"
 
 #include "settings_config.h"
 #include "ui.h"
@@ -248,6 +249,9 @@ static bool ui_is_screen_enabled(screen_id_t screen_id) {
   case SCREEN_11:
     // VAG Diagnostic Scanner - ENABLED
     return true;
+  case SCREEN_12:
+    // VAG Launch Control Diagnostics - ENABLED
+    return true;
   default:
     // Screens 1, 2, 4, 5 are managed by layout manager (empty check)
     // Need to map screen_id enum to layout manager index (which matches enum
@@ -260,7 +264,7 @@ static bool ui_is_screen_enabled(screen_id_t screen_id) {
 screen_id_t ui_get_next_enabled_screen(screen_id_t current_screen,
                                        bool forward) {
   screen_id_t screens[] = {SCREEN_1, SCREEN_2, SCREEN_4, SCREEN_5, SCREEN_8,
-                           SCREEN_3, SCREEN_6, SCREEN_7, SCREEN_9, SCREEN_10, SCREEN_11};
+                           SCREEN_3, SCREEN_6, SCREEN_7, SCREEN_9, SCREEN_10, SCREEN_11, SCREEN_12};
   int num_screens = sizeof(screens) / sizeof(screens[0]);
   int current_index = -1;
 
@@ -387,6 +391,15 @@ void ui_switch_to_screen(screen_id_t screen_id) {
     }
   }
 
+  // Turn sniffer ON when entering Screen 3, and OFF when leaving Screen 3
+  if (current_screen == SCREEN_3 && screen_id != SCREEN_3) {
+    extern void ui_set_can_sniffer_active(int active);
+    ui_set_can_sniffer_active(0);
+  } else if (screen_id == SCREEN_3 && current_screen != SCREEN_3) {
+    extern void ui_set_can_sniffer_active(int active);
+    ui_set_can_sniffer_active(1);
+  }
+
   switch (screen_id) {
   case SCREEN_1:
     lv_scr_load_anim(ui_Screen1, anim_type, anim_time, 0, false);
@@ -479,6 +492,17 @@ void ui_switch_to_screen(screen_id_t screen_id) {
     lv_scr_load_anim(ui_Screen11, anim_type, anim_time, 0, false);
     current_screen = SCREEN_11;
     ESP_LOGI("SCREEN_MANAGER", "Switched to SCREEN_11 (Diagnostic Scanner)");
+    break;
+
+  case SCREEN_12:
+    // Lazy init: create Screen 12 on first use to save LVGL heap at boot
+    if (ui_Screen12 == NULL) {
+      ESP_LOGI("SCREEN_MANAGER", "Lazy-initializing Screen 12...");
+      ui_Screen12_screen_init();
+    }
+    lv_scr_load_anim(ui_Screen12, anim_type, anim_time, 0, false);
+    current_screen = SCREEN_12;
+    ESP_LOGI("SCREEN_MANAGER", "Switched to SCREEN_12 (Launch Control)");
     break;
 
   default:

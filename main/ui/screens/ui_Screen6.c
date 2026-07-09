@@ -108,6 +108,8 @@ static bool show_egt = true;
 static bool show_knock_retard = true;
 static bool show_boost_act = true;
 static bool show_ambient_temp = true;
+static bool show_mre_map = true;
+static bool show_mre_wastegate = true;
 
 // Function prototypes
 static void save_settings_event_cb(lv_event_t *e);
@@ -313,6 +315,10 @@ static gauge_id_t get_gauge_id_from_text(const char *txt) {
     return GAUGE_BOOST_ACT;
   if (strcmp(txt, "Ambient Temp") == 0)
     return GAUGE_AMBIENT_TEMP;
+  if (strcmp(txt, "MAP MRE") == 0)
+    return GAUGE_MRE_MAP;
+  if (strcmp(txt, "WG MRE") == 0)
+    return GAUGE_MRE_WASTEGATE;
 
   return GAUGE_NONE;
 }
@@ -421,6 +427,10 @@ static void gauge_checkbox_event_cb(lv_event_t *e) {
     show_boost_act = checked;
   else if (strcmp(txt, "Ambient Temp") == 0)
     show_ambient_temp = checked;
+  else if (strcmp(txt, "MAP MRE") == 0)
+    show_mre_map = checked;
+  else if (strcmp(txt, "WG MRE") == 0)
+    show_mre_wastegate = checked;
 
   settings_modified = 1;
   ESP_LOGI("SCREEN6", "Gauge %s toggled to: %s", txt, checked ? "ON" : "OFF");
@@ -485,6 +495,10 @@ static void gauge_checkbox_event_cb(lv_event_t *e) {
       settings->show_boost_act = checked;
     else if (strcmp(txt, "Ambient Temp") == 0)
       settings->show_ambient_temp = checked;
+    else if (strcmp(txt, "MAP MRE") == 0)
+      settings->show_mre_map = checked;
+    else if (strcmp(txt, "WG MRE") == 0)
+      settings->show_mre_wastegate = checked;
 
     // Update ordered list
     gauge_id_t id = get_gauge_id_from_text(txt);
@@ -509,7 +523,15 @@ static void platform_checkbox_event_cb(lv_event_t *e) {
   const char *txt = lv_checkbox_get_text(cb);
   bool checked = lv_obj_has_state(cb, LV_STATE_CHECKED);
 
-  // If unchecked, force reference back to checked (radio button behavior)
+  if (strcmp(txt, "rusEFI MRE") == 0) {
+    // rusEFI MRE is a parallel toggle, not mutually exclusive
+    settings_set_mre_parallel(checked);
+    settings_modified = 1;
+    ESP_LOGI("SCREEN6", "MRE Parallel toggled to: %d", checked);
+    return;
+  }
+
+  // If a main platform is unchecked, force reference back to checked (radio button behavior)
   if (!checked) {
     lv_obj_add_state(cb, LV_STATE_CHECKED);
     return;
@@ -530,8 +552,6 @@ static void platform_checkbox_event_cb(lv_event_t *e) {
     selected_platform = PLATFORM_BMW_E46;
   else if (strcmp(txt, "BMW Fxx") == 0)
     selected_platform = PLATFORM_BMW_F_SERIES;
-  else if (strcmp(txt, "rusEFI MRE") == 0)
-    selected_platform = PLATFORM_RUSEFI_MRE;
 
   // Apply via setter (also updates parser)
   settings_set_can_platform(selected_platform);
@@ -543,14 +563,17 @@ static void platform_checkbox_event_cb(lv_event_t *e) {
   settings_modified = 1;
   ESP_LOGI("SCREEN6", "Platform switched to: %s (%d)", txt, selected_platform);
 
-  // Uncheck other checkboxes
+  // Uncheck other checkboxes (excluding rusEFI MRE)
   if (ui_Container_PlatformList) {
     uint32_t child_cnt = lv_obj_get_child_cnt(ui_Container_PlatformList);
     for (uint32_t i = 0; i < child_cnt; i++) {
       lv_obj_t *child = lv_obj_get_child(ui_Container_PlatformList, i);
       if (lv_obj_check_type(child, &lv_checkbox_class)) {
         if (child != cb) {
-          lv_obj_clear_state(child, LV_STATE_CHECKED);
+          const char *child_txt = lv_checkbox_get_text(child);
+          if (strcmp(child_txt, "rusEFI MRE") != 0) {
+            lv_obj_clear_state(child, LV_STATE_CHECKED);
+          }
         }
       }
     }
@@ -962,9 +985,10 @@ void ui_Screen6_screen_init(void) {
       "Water Temp", "Fuel Press", "Battery",   "Screen 4:", "Pedal",
       "WG Pos",     "BOV",        "TCU Req",   "TCU Act",   "Eng Req",
       "Screen 5:",  "Eng Act",    "Limit TQ",  "IAT",       "Speed",
-      "Trans Temp", "Lambda/AFR", "EGT",       "Knock",     "Act Boost", "Ambient Temp"};
+      "Trans Temp", "Lambda/AFR", "EGT",       "Knock",     "Act Boost", "Ambient Temp",
+      "Screen MRE:", "MAP MRE",   "WG MRE"};
 
-  for (int i = 0; i < 31; i++) {
+  for (int i = 0; i < 34; i++) {
     if (strchr(gauges[i], ':')) {
       lv_obj_t *header = lv_label_create(ui_Container_GaugeList);
       lv_label_set_text(header, gauges[i]);
@@ -1018,7 +1042,7 @@ void ui_Screen6_screen_init(void) {
   lv_label_set_text(lua_title, LV_SYMBOL_EDIT " Lua Script Editor");
   lv_obj_set_style_text_color(lua_title, lv_color_hex(0x00FF88), 0);
   lv_obj_set_style_text_font(lua_title, &montserrat_20_en_ru, 0);
-  lv_obj_set_pos(lua_title, 10, lua_section_y);
+  lv_obj_set_pos(lua_title, 2, lua_section_y);
 
   // Lua Code TextArea
   int lua_editor_y = lua_section_y + 30;
@@ -1026,7 +1050,7 @@ void ui_Screen6_screen_init(void) {
 
   ui_TextArea_Lua = lv_textarea_create(ui_Screen6);
   lv_obj_set_size(ui_TextArea_Lua, 720, lua_editor_h);
-  lv_obj_set_pos(ui_TextArea_Lua, 8, lua_editor_y);
+  lv_obj_set_pos(ui_TextArea_Lua, 0, lua_editor_y);
   lv_obj_set_style_bg_color(ui_TextArea_Lua, lv_color_hex(0x0a0a0a), 0);
   lv_obj_set_style_bg_opa(ui_TextArea_Lua, LV_OPA_COVER, 0);
   lv_obj_set_style_text_color(ui_TextArea_Lua, lv_color_hex(0x00FF88), 0);
@@ -1059,7 +1083,7 @@ void ui_Screen6_screen_init(void) {
   // Run Rule button
   ui_Button_Run_Rule = lv_btn_create(ui_Screen6);
   lv_obj_set_size(ui_Button_Run_Rule, lua_btn_w, lua_btn_h);
-  lv_obj_set_pos(ui_Button_Run_Rule, 8, lua_btn_y);
+  lv_obj_set_pos(ui_Button_Run_Rule, 0, lua_btn_y);
   lv_obj_set_style_bg_color(ui_Button_Run_Rule, lv_color_hex(0x00D4FF), 0);
   {
     lv_obj_t *lbl = lv_label_create(ui_Button_Run_Rule);
@@ -1071,7 +1095,7 @@ void ui_Screen6_screen_init(void) {
   // Save Rule button
   ui_Button_Save_Rule = lv_btn_create(ui_Screen6);
   lv_obj_set_size(ui_Button_Save_Rule, lua_btn_w, lua_btn_h);
-  lv_obj_set_pos(ui_Button_Save_Rule, 8 + lua_btn_w + 8, lua_btn_y);
+  lv_obj_set_pos(ui_Button_Save_Rule, 0 + lua_btn_w + 8, lua_btn_y);
   lv_obj_set_style_bg_color(ui_Button_Save_Rule, lv_color_hex(0x00FF88), 0);
   {
     lv_obj_t *lbl = lv_label_create(ui_Button_Save_Rule);
@@ -1083,7 +1107,7 @@ void ui_Screen6_screen_init(void) {
   // Help button
   ui_Button_Help_Rule = lv_btn_create(ui_Screen6);
   lv_obj_set_size(ui_Button_Help_Rule, lua_btn_w, lua_btn_h);
-  lv_obj_set_pos(ui_Button_Help_Rule, 8 + (lua_btn_w + 8) * 2, lua_btn_y);
+  lv_obj_set_pos(ui_Button_Help_Rule, 0 + (lua_btn_w + 8) * 2, lua_btn_y);
   lv_obj_set_style_bg_color(ui_Button_Help_Rule, lv_color_hex(0xFFCC00), 0);
   {
     lv_obj_t *lbl = lv_label_create(ui_Button_Help_Rule);
@@ -1095,7 +1119,7 @@ void ui_Screen6_screen_init(void) {
   // GPIO Map button
   ui_Button_GPIO_Map = lv_btn_create(ui_Screen6);
   lv_obj_set_size(ui_Button_GPIO_Map, lua_btn_w, lua_btn_h);
-  lv_obj_set_pos(ui_Button_GPIO_Map, 8 + (lua_btn_w + 8) * 3, lua_btn_y);
+  lv_obj_set_pos(ui_Button_GPIO_Map, 0 + (lua_btn_w + 8) * 3, lua_btn_y);
   lv_obj_set_style_bg_color(ui_Button_GPIO_Map, lv_color_hex(0xFF00FF), 0);
   {
     lv_obj_t *lbl = lv_label_create(ui_Button_GPIO_Map);
@@ -1106,7 +1130,7 @@ void ui_Screen6_screen_init(void) {
   // Telegram button
   ui_Button_Telegram = lv_btn_create(ui_Screen6);
   lv_obj_set_size(ui_Button_Telegram, lua_btn_w, lua_btn_h);
-  lv_obj_set_pos(ui_Button_Telegram, 8 + (lua_btn_w + 8) * 4, lua_btn_y);
+  lv_obj_set_pos(ui_Button_Telegram, 0 + (lua_btn_w + 8) * 4, lua_btn_y);
   lv_obj_set_style_bg_color(ui_Button_Telegram, lv_color_hex(0x0088FF), 0);
   {
     lv_obj_t *lbl = lv_label_create(ui_Button_Telegram);
@@ -1187,6 +1211,8 @@ void ui_Screen6_load_settings(void) {
     show_knock_retard = settings->show_knock_retard;
     show_boost_act = settings->show_boost_act;
     show_ambient_temp = settings->show_ambient_temp;
+    show_mre_map = settings->show_mre_map;
+    show_mre_wastegate = settings->show_mre_wastegate;
 
     // Legacy support: If count is 0 but booleans are true, populate list in
     // default order
@@ -1248,6 +1274,10 @@ void ui_Screen6_load_settings(void) {
         add_gauge_to_list(settings, GAUGE_BOOST_ACT);
       if (show_ambient_temp)
         add_gauge_to_list(settings, GAUGE_AMBIENT_TEMP);
+      if (show_mre_map)
+        add_gauge_to_list(settings, GAUGE_MRE_MAP);
+      if (show_mre_wastegate)
+        add_gauge_to_list(settings, GAUGE_MRE_WASTEGATE);
     }
   }
 
@@ -1293,6 +1323,8 @@ void ui_Screen6_save_settings(void) {
     settings->show_knock_retard = show_knock_retard;
     settings->show_boost_act = show_boost_act;
     settings->show_ambient_temp = show_ambient_temp;
+    settings->show_mre_map = show_mre_map;
+    settings->show_mre_wastegate = show_mre_wastegate;
 
     // system_settings_save(settings); // Removed redundant call
   }
@@ -1384,6 +1416,10 @@ void ui_Screen6_update_button_states(void) {
           should_check = show_boost_act;
         else if (strcmp(txt, "Ambient Temp") == 0)
           should_check = show_ambient_temp;
+        else if (strcmp(txt, "MAP MRE") == 0)
+          should_check = show_mre_map;
+        else if (strcmp(txt, "WG MRE") == 0)
+          should_check = show_mre_wastegate;
         else {
           // Fallback to check full list if abbreviated
           if (strcmp(txt, "Wastegate") == 0)
@@ -1460,7 +1496,7 @@ void ui_Screen6_update_button_states(void) {
                  current_plat == PLATFORM_BMW_F_SERIES)
           should_check = true;
         else if (strcmp(txt, "rusEFI MRE") == 0 &&
-                 current_plat == PLATFORM_RUSEFI_MRE)
+                 (current_plat == PLATFORM_RUSEFI_MRE || settings_get_mre_parallel()))
           should_check = true;
 
         if (should_check)

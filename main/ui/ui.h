@@ -33,6 +33,7 @@ LV_FONT_DECLARE(montserrat_20_en_ru);
 #include "screens/ui_Screen9.h"
 #include "screens/ui_Screen10.h"
 #include "screens/ui_Screen11.h"
+#include "screens/ui_Screen12.h"
 #include "ui_updates.h"
 
 ///////////////////// SETTINGS ////////////////////
@@ -42,6 +43,7 @@ LV_FONT_DECLARE(montserrat_20_en_ru);
 extern lv_obj_t *ui_Screen9;
 extern lv_obj_t *ui_Screen10;
 extern lv_obj_t *ui_Screen11;
+extern lv_obj_t *ui_Screen12;
 
 // SCREEN 1
 extern lv_obj_t *ui_Arc_MAP;

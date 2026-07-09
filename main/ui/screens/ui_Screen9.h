@@ -32,6 +32,7 @@ extern lv_obj_t *ui_Fan_Slider_Label;
 // Header Labels
 extern lv_obj_t *ui_Screen9_CLT_Val;
 extern lv_obj_t *ui_Screen9_IAT_Val;
+extern lv_obj_t *ui_Screen9_RPM_Val;
 
 // Lifecycle & Update methods
 void ui_Screen9_screen_init(void);

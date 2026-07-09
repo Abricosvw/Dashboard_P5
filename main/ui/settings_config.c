@@ -39,7 +39,7 @@ static void settings_to_json(const touch_settings_t *settings, char *buffer,
            "\"show_eng_act\":%s,\"show_limit_tq\":%s,"
            "\"show_iat\":%s,\"show_speed\":%s,\"show_trans_temp\":%s,"
            "\"show_afr\":%s,\"show_egt\":%s,\"show_knock_retard\":%s,\"show_boost_act\":%s,"
-           "\"show_ambient_temp\":%s,\"send_ambient_temp_to_can\":%s,\"ambient_can_temp\":%.1f,"
+           "\"show_ambient_temp\":%s,\"show_mre_map\":%s,\"show_mre_wastegate\":%s,\"mre_parallel\":%s,\"send_ambient_temp_to_can\":%s,\"ambient_can_temp\":%.1f,"
            "\"can_platform\":%d,"
            "\"boot_sound_path\":\"%s\","
            "\"diag_address\":%d,\"diag_protocol\":%d,"
@@ -77,6 +77,9 @@ static void settings_to_json(const touch_settings_t *settings, char *buffer,
            sys_settings->show_knock_retard ? "true" : "false",
            sys_settings->show_boost_act ? "true" : "false",
            sys_settings->show_ambient_temp ? "true" : "false",
+           sys_settings->show_mre_map ? "true" : "false",
+           sys_settings->show_mre_wastegate ? "true" : "false",
+           settings->mre_parallel ? "true" : "false",
            sys_settings->send_ambient_temp_to_can ? "true" : "false",
            sys_settings->ambient_can_temp,
            settings->can_platform, settings->boot_sound_path,
@@ -85,7 +88,79 @@ static void settings_to_json(const touch_settings_t *settings, char *buffer,
            settings->diag_hw_number, settings->diag_sw_version,
            settings->diag_vin, (unsigned long)settings->diag_coding);
 
-  // Now append units array: "units":[0,0,...]}
+  // Append Screen 9 and Screen 10 settings and maps
+  if (len > 0 && (size_t)len < buffer_size) {
+    char *p = buffer + len;
+    size_t rem = buffer_size - len;
+    int w = snprintf(p, rem,
+      "\"pump_is_auto\":%s,\"pump_manual_on\":%s,\"pump_manual_speed\":%d,"
+      "\"fan_is_auto\":%s,\"fan_manual_on\":%s,\"fan_manual_speed\":%d,"
+      "\"wg_is_auto\":%s,\"wg_manual_pos\":%d,\"wg_is_inverted\":%s,"
+      "\"bov_is_auto\":%s,\"bov_manual_open\":%s,\"bov_tps_threshold\":%d,"
+      "\"bov_press_threshold\":%d,\"bov_open_duration\":%d,\"bov_stat_enabled\":%s,"
+      "\"bov_stat_ratio\":%d,",
+      settings->pump_is_auto ? "true" : "false",
+      settings->pump_manual_on ? "true" : "false",
+      settings->pump_manual_speed,
+      settings->fan_is_auto ? "true" : "false",
+      settings->fan_manual_on ? "true" : "false",
+      settings->fan_manual_speed,
+      settings->wg_is_auto ? "true" : "false",
+      settings->wg_manual_pos,
+      settings->wg_is_inverted ? "true" : "false",
+      settings->bov_is_auto ? "true" : "false",
+      settings->bov_manual_open ? "true" : "false",
+      settings->bov_tps_threshold,
+      settings->bov_press_threshold,
+      settings->bov_open_duration,
+      settings->bov_stat_enabled ? "true" : "false",
+      settings->bov_stat_ratio
+    );
+    if (w > 0 && (size_t)w < rem) {
+      len += w;
+    }
+  }
+
+  if (len > 0 && (size_t)len < buffer_size) {
+    char *p = buffer + len;
+    size_t rem = buffer_size - len;
+    int w = snprintf(p, rem, "\"pump_map_temp\":[");
+    if (w > 0 && (size_t)w < rem) {
+      p += w; rem -= w; len += w;
+      for (int i = 0; i < 10; i++) {
+        w = snprintf(p, rem, "%d%s", settings->pump_map_temp[i], (i == 9) ? "" : ",");
+        if (w > 0 && (size_t)w < rem) { p += w; rem -= w; len += w; } else { break; }
+      }
+      w = snprintf(p, rem, "],\"pump_map_speed\":[");
+      if (w > 0 && (size_t)w < rem) {
+        p += w; rem -= w; len += w;
+        for (int i = 0; i < 10; i++) {
+          w = snprintf(p, rem, "%d%s", settings->pump_map_speed[i], (i == 9) ? "" : ",");
+          if (w > 0 && (size_t)w < rem) { p += w; rem -= w; len += w; } else { break; }
+        }
+        w = snprintf(p, rem, "],\"fan_map_temp\":[");
+        if (w > 0 && (size_t)w < rem) {
+          p += w; rem -= w; len += w;
+          for (int i = 0; i < 10; i++) {
+            w = snprintf(p, rem, "%d%s", settings->fan_map_temp[i], (i == 9) ? "" : ",");
+            if (w > 0 && (size_t)w < rem) { p += w; rem -= w; len += w; } else { break; }
+          }
+          w = snprintf(p, rem, "],\"fan_map_speed\":[");
+          if (w > 0 && (size_t)w < rem) {
+            p += w; rem -= w; len += w;
+            for (int i = 0; i < 10; i++) {
+              w = snprintf(p, rem, "%d%s", settings->fan_map_speed[i], (i == 9) ? "" : ",");
+              if (w > 0 && (size_t)w < rem) { p += w; rem -= w; len += w; } else { break; }
+            }
+            w = snprintf(p, rem, "],");
+            if (w > 0 && (size_t)w < rem) { len += w; }
+          }
+        }
+      }
+    }
+  }
+
+  // Now append units and sources arrays: "units":[...],"sources":[...]}
   if (len > 0 && (size_t)len < buffer_size) {
     char *p = buffer + len;
     size_t rem = buffer_size - len;
@@ -102,7 +177,37 @@ static void settings_to_json(const touch_settings_t *settings, char *buffer,
           break;
         }
       }
-      snprintf(p, rem, "]}");
+      w = snprintf(p, rem, "],\"sources\":[");
+      if (w > 0 && (size_t)w < rem) {
+        p += w;
+        rem -= w;
+        for (int i = 0; i < GAUGE_MAX; i++) {
+          w = snprintf(p, rem, "%d%s", settings->gauge_sources[i], (i == GAUGE_MAX - 1) ? "" : ",");
+          if (w > 0 && (size_t)w < rem) {
+            p += w;
+            rem -= w;
+          } else {
+            break;
+          }
+        }
+        snprintf(p, rem, "]}");
+      }
+    }
+  }
+}
+
+static void parse_int_array(const char *json_str, const char *key, int *target, int size) {
+  char *p = strstr(json_str, key);
+  if (p) {
+    p = strchr(p, '[');
+    if (p) {
+      p++;
+      for (int i = 0; i < size; i++) {
+        target[i] = atoi(p);
+        p = strchr(p, ',');
+        if (!p) break;
+        p++;
+      }
     }
   }
 }
@@ -165,6 +270,15 @@ static bool settings_from_json(const char *json_str,
     }                                                                          \
   } while (0)
 
+#define PARSE_INT(key, target)                                                 \
+  do {                                                                         \
+    const char *k = "\"" key "\":";                                            \
+    char *p = strstr(json_str, k);                                             \
+    if (p) {                                                                   \
+      target = atoi(p + strlen(k));                                            \
+    }                                                                          \
+  } while (0)
+
     PARSE_BOOL("show_map", sys_settings->show_map);
     PARSE_BOOL("show_wastegate", sys_settings->show_wastegate);
     PARSE_BOOL("show_tps", sys_settings->show_tps);
@@ -192,9 +306,11 @@ static bool settings_from_json(const char *json_str,
     PARSE_BOOL("show_trans_temp", sys_settings->show_trans_temp);
     PARSE_BOOL("show_afr", sys_settings->show_afr);
     PARSE_BOOL("show_egt", sys_settings->show_egt);
-    PARSE_BOOL("show_knock_retard", sys_settings->show_knock_retard);
     PARSE_BOOL("show_boost_act", sys_settings->show_boost_act);
     PARSE_BOOL("show_ambient_temp", sys_settings->show_ambient_temp);
+    PARSE_BOOL("show_mre_map", sys_settings->show_mre_map);
+    PARSE_BOOL("show_mre_wastegate", sys_settings->show_mre_wastegate);
+    PARSE_BOOL("mre_parallel", sys_settings->mre_parallel);
     PARSE_BOOL("send_ambient_temp_to_can", sys_settings->send_ambient_temp_to_can);
 
     const char *amb_temp_key = "\"ambient_can_temp\":";
@@ -214,8 +330,38 @@ static bool settings_from_json(const char *json_str,
     settings->show_knock_retard = sys_settings->show_knock_retard;
     settings->show_boost_act = sys_settings->show_boost_act;
     settings->show_ambient_temp = sys_settings->show_ambient_temp;
+    settings->show_mre_map = sys_settings->show_mre_map;
+    settings->show_mre_wastegate = sys_settings->show_mre_wastegate;
+    settings->mre_parallel = sys_settings->mre_parallel;
     settings->send_ambient_temp_to_can = sys_settings->send_ambient_temp_to_can;
     settings->ambient_can_temp = sys_settings->ambient_can_temp;
+
+    // Parse Screen 9 (Pump & Fan) Settings
+    PARSE_BOOL("pump_is_auto", settings->pump_is_auto);
+    PARSE_BOOL("pump_manual_on", settings->pump_manual_on);
+    PARSE_INT("pump_manual_speed", settings->pump_manual_speed);
+    PARSE_BOOL("fan_is_auto", settings->fan_is_auto);
+    PARSE_BOOL("fan_manual_on", settings->fan_manual_on);
+    PARSE_INT("fan_manual_speed", settings->fan_manual_speed);
+    parse_int_array(json_str, "\"pump_map_temp\":", settings->pump_map_temp, 10);
+    parse_int_array(json_str, "\"pump_map_speed\":", settings->pump_map_speed, 10);
+    parse_int_array(json_str, "\"fan_map_temp\":", settings->fan_map_temp, 10);
+    parse_int_array(json_str, "\"fan_map_speed\":", settings->fan_map_speed, 10);
+
+    // Parse Screen 10 (Wastegate & BOV) Settings
+    PARSE_BOOL("wg_is_auto", settings->wg_is_auto);
+    PARSE_INT("wg_manual_pos", settings->wg_manual_pos);
+    PARSE_BOOL("wg_is_inverted", settings->wg_is_inverted);
+    PARSE_BOOL("bov_is_auto", settings->bov_is_auto);
+    PARSE_BOOL("bov_manual_open", settings->bov_manual_open);
+    PARSE_INT("bov_tps_threshold", settings->bov_tps_threshold);
+    PARSE_INT("bov_press_threshold", settings->bov_press_threshold);
+    PARSE_INT("bov_open_duration", settings->bov_open_duration);
+    PARSE_BOOL("bov_stat_enabled", settings->bov_stat_enabled);
+    PARSE_INT("bov_stat_ratio", settings->bov_stat_ratio);
+
+#undef PARSE_BOOL
+#undef PARSE_INT
 
     // Parse units array
     const char *units_key = "\"units\":[";
@@ -228,6 +374,26 @@ static bool settings_from_json(const char *json_str,
         p = strchr(p, ',');
         if (p) p++;
         else break;
+      }
+    }
+
+    // Parse sources array
+    const char *sources_key = "\"sources\":[";
+    char *sources_ptr = strstr(json_str, sources_key);
+    if (sources_ptr) {
+      char *p = sources_ptr + strlen(sources_key);
+      for (int i = 0; i < GAUGE_MAX; i++) {
+        settings->gauge_sources[i] = atoi(p);
+        sys_settings->gauge_sources[i] = settings->gauge_sources[i];
+        p = strchr(p, ',');
+        if (p) p++;
+        else break;
+      }
+    } else {
+      // Default to AUTO (0)
+      for (int i = 0; i < GAUGE_MAX; i++) {
+        settings->gauge_sources[i] = 0;
+        sys_settings->gauge_sources[i] = 0;
       }
     }
 
@@ -388,19 +554,52 @@ void settings_init_defaults(touch_settings_t *settings) {
   settings->show_trans_temp = true;
   settings->show_afr = true;
   settings->show_egt = true;
-  settings->show_knock_retard = true;
   settings->show_boost_act = true;
   settings->show_ambient_temp = true;
+  settings->show_mre_map = true;
+  settings->show_mre_wastegate = true;
+  settings->mre_parallel = false;
   settings->send_ambient_temp_to_can = false;
   settings->ambient_can_temp = 20.0f;
+
+  // Screen 9 Pump & Fan defaults
+  settings->pump_is_auto = true;
+  settings->pump_manual_on = false;
+  settings->pump_manual_speed = 50;
+  settings->fan_is_auto = true;
+  settings->fan_manual_on = false;
+  settings->fan_manual_speed = 50;
+  int def_pump_map_temp[10] = {20, 30, 40, 50, 60, 70, 80, 90, 100, 110};
+  int def_pump_map_speed[10] = {0, 10, 30, 50, 70, 90, 100, 100, 100, 100};
+  int def_fan_map_temp[10] = {30, 40, 50, 60, 70, 80, 90, 100, 110, 120};
+  int def_fan_map_speed[10] = {0, 0, 20, 40, 60, 80, 100, 100, 100, 100};
+  memcpy(settings->pump_map_temp, def_pump_map_temp, sizeof(settings->pump_map_temp));
+  memcpy(settings->pump_map_speed, def_pump_map_speed, sizeof(settings->pump_map_speed));
+  memcpy(settings->fan_map_temp, def_fan_map_temp, sizeof(settings->fan_map_temp));
+  memcpy(settings->fan_map_speed, def_fan_map_speed, sizeof(settings->fan_map_speed));
+
+  // Screen 10 Wastegate & BOV defaults
+  settings->wg_is_auto = true;
+  settings->wg_manual_pos = 50;
+  settings->wg_is_inverted = false;
+  settings->bov_is_auto = true;
+  settings->bov_manual_open = false;
+  settings->bov_tps_threshold = 25;
+  settings->bov_press_threshold = 35;
+  settings->bov_open_duration = 20;
+  settings->bov_stat_enabled = true;
+  settings->bov_stat_ratio = 120;
 
   // Initialize gauge units defaults
   for (int i = 0; i < 32; i++) {
     settings->gauge_units[i] = 0;
+    settings->gauge_sources[i] = 0; // default to AUTO (0)
   }
   settings->gauge_units[GAUGE_MAP] = UNIT_KPA;
   settings->gauge_units[GAUGE_BOOST] = UNIT_KPA;
   settings->gauge_units[GAUGE_BOOST_ACT] = UNIT_KPA;
+  settings->gauge_units[GAUGE_MRE_MAP] = UNIT_KPA;
+  settings->gauge_units[GAUGE_MRE_WASTEGATE] = UNIT_PCT;
   settings->gauge_units[GAUGE_OIL_PRESS] = UNIT_KPA;
   settings->gauge_units[GAUGE_FUEL_PRESS] = UNIT_KPA;
   settings->gauge_units[GAUGE_AFR] = UNIT_LAMBDA;
@@ -438,10 +637,14 @@ void settings_init_defaults(touch_settings_t *settings) {
     sys_settings->show_knock_retard = true;
     sys_settings->show_boost_act = true;
     sys_settings->show_ambient_temp = true;
+    sys_settings->show_mre_map = true;
+    sys_settings->show_mre_wastegate = true;
+    sys_settings->mre_parallel = false;
     sys_settings->send_ambient_temp_to_can = false;
     sys_settings->ambient_can_temp = 20.0f;
     for (int i = 0; i < 32; i++) {
       sys_settings->gauge_units[i] = settings->gauge_units[i];
+      sys_settings->gauge_sources[i] = settings->gauge_sources[i];
     }
     sys_settings->diag_address = settings->diag_address;
     sys_settings->diag_protocol = settings->diag_protocol;
@@ -481,12 +684,12 @@ void settings_save(const touch_settings_t *settings_to_save) {
   }
 
   // Save to SD Card as JSON
-  char *json_buffer = malloc(1024);
+  char *json_buffer = malloc(2048);
   if (!json_buffer) {
     ESP_LOGE(TAG, "Failed to allocate memory for JSON serialization");
     return;
   }
-  settings_to_json(settings_to_save, json_buffer, 1024);
+  settings_to_json(settings_to_save, json_buffer, 2048);
 
   ESP_LOGI(TAG, "Attempting to save settings to SD card...");
 
@@ -591,22 +794,25 @@ esp_err_t settings_load(void) {
 
   FILE *f = fopen(SD_MOUNT_POINT "/settings.cfg", "r");
   if (f != NULL) {
-    char *buffer = malloc(1024);
+    char *buffer = malloc(2048);
     if (!buffer) {
       ESP_LOGE(TAG, "Failed to allocate memory for reading settings");
       fclose(f);
       xSemaphoreGive(sd_card_mutex);
       return ESP_ERR_NO_MEM;
     }
-    memset(buffer, 0, 1024);
-    size_t bytes_read = fread(buffer, 1, 1023, f);
+    memset(buffer, 0, 2048);
+    size_t bytes_read = fread(buffer, 1, 2048, f);
 
     fclose(f);
 
     // Release mutex after file operations
     xSemaphoreGive(sd_card_mutex);
 
-    ESP_LOGI(TAG, "Read %d bytes from settings.cfg: %s", bytes_read, buffer);
+    ESP_LOGI(TAG, "Read %d bytes from settings.cfg: %s", (int)bytes_read, buffer);
+
+    // Initialize default values first, so missing fields in old settings.cfg retain defaults
+    settings_init_defaults(&current_settings);
 
     if (settings_from_json(buffer, &current_settings)) {
       ESP_LOGI(TAG, "Settings loaded from settings.cfg successfully.");
@@ -692,6 +898,16 @@ void settings_set_can_platform(CanPlatform platform) {
   // Apply immediately
   can_parser_set_platform(platform);
 }
+bool settings_get_mre_parallel(void) {
+  return current_settings.mre_parallel;
+}
+void settings_set_mre_parallel(bool enabled) {
+  current_settings.mre_parallel = enabled;
+  system_settings_t *sys_settings = system_settings_get();
+  if (sys_settings) {
+    sys_settings->mre_parallel = enabled;
+  }
+}
 void settings_apply_changes(void) {
   ESP_LOGI(TAG, "Applying settings changes...");
 
@@ -776,3 +992,47 @@ void settings_set_ambient_can_temp(float temp) {
 float settings_get_ambient_can_temp(void) {
   return current_settings.ambient_can_temp;
 }
+
+// Screen 9 Persistent Getters/Setters
+bool settings_get_pump_is_auto(void) { return current_settings.pump_is_auto; }
+void settings_set_pump_is_auto(bool is_auto) { current_settings.pump_is_auto = is_auto; }
+bool settings_get_pump_manual_on(void) { return current_settings.pump_manual_on; }
+void settings_set_pump_manual_on(bool manual_on) { current_settings.pump_manual_on = manual_on; }
+int settings_get_pump_manual_speed(void) { return current_settings.pump_manual_speed; }
+void settings_set_pump_manual_speed(int speed) { current_settings.pump_manual_speed = speed; }
+bool settings_get_fan_is_auto(void) { return current_settings.fan_is_auto; }
+void settings_set_fan_is_auto(bool is_auto) { current_settings.fan_is_auto = is_auto; }
+bool settings_get_fan_manual_on(void) { return current_settings.fan_manual_on; }
+void settings_set_fan_manual_on(bool manual_on) { current_settings.fan_manual_on = manual_on; }
+int settings_get_fan_manual_speed(void) { return current_settings.fan_manual_speed; }
+void settings_set_fan_manual_speed(int speed) { current_settings.fan_manual_speed = speed; }
+int settings_get_pump_map_temp(int idx) { return current_settings.pump_map_temp[idx]; }
+void settings_set_pump_map_temp(int idx, int temp) { current_settings.pump_map_temp[idx] = temp; }
+int settings_get_pump_map_speed(int idx) { return current_settings.pump_map_speed[idx]; }
+void settings_set_pump_map_speed(int idx, int speed) { current_settings.pump_map_speed[idx] = speed; }
+int settings_get_fan_map_temp(int idx) { return current_settings.fan_map_temp[idx]; }
+void settings_set_fan_map_temp(int idx, int temp) { current_settings.fan_map_temp[idx] = temp; }
+int settings_get_fan_map_speed(int idx) { return current_settings.fan_map_speed[idx]; }
+void settings_set_fan_map_speed(int idx, int speed) { current_settings.fan_map_speed[idx] = speed; }
+
+// Screen 10 Persistent Getters/Setters
+bool settings_get_wg_is_auto(void) { return current_settings.wg_is_auto; }
+void settings_set_wg_is_auto(bool is_auto) { current_settings.wg_is_auto = is_auto; }
+int settings_get_wg_manual_pos(void) { return current_settings.wg_manual_pos; }
+void settings_set_wg_manual_pos(int pos) { current_settings.wg_manual_pos = pos; }
+bool settings_get_wg_is_inverted(void) { return current_settings.wg_is_inverted; }
+void settings_set_wg_is_inverted(bool inverted) { current_settings.wg_is_inverted = inverted; }
+bool settings_get_bov_is_auto(void) { return current_settings.bov_is_auto; }
+void settings_set_bov_is_auto(bool is_auto) { current_settings.bov_is_auto = is_auto; }
+bool settings_get_bov_manual_open(void) { return current_settings.bov_manual_open; }
+void settings_set_bov_manual_open(bool open) { current_settings.bov_manual_open = open; }
+int settings_get_bov_tps_threshold(void) { return current_settings.bov_tps_threshold; }
+void settings_set_bov_tps_threshold(int val) { current_settings.bov_tps_threshold = val; }
+int settings_get_bov_press_threshold(void) { return current_settings.bov_press_threshold; }
+void settings_set_bov_press_threshold(int val) { current_settings.bov_press_threshold = val; }
+int settings_get_bov_open_duration(void) { return current_settings.bov_open_duration; }
+void settings_set_bov_open_duration(int val) { current_settings.bov_open_duration = val; }
+bool settings_get_bov_stat_enabled(void) { return current_settings.bov_stat_enabled; }
+void settings_set_bov_stat_enabled(bool enabled) { current_settings.bov_stat_enabled = enabled; }
+int settings_get_bov_stat_ratio(void) { return current_settings.bov_stat_ratio; }
+void settings_set_bov_stat_ratio(int val) { current_settings.bov_stat_ratio = val; }

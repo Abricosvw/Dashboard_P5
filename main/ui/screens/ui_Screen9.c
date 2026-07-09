@@ -33,6 +33,7 @@ lv_obj_t *ui_Fan_Slider_Label = NULL;
 // Header Labels
 lv_obj_t *ui_Screen9_CLT_Val = NULL;
 lv_obj_t *ui_Screen9_IAT_Val = NULL;
+lv_obj_t *ui_Screen9_RPM_Val = NULL;
 
 // Colors matching the existing premium design system
 #define CLR_BG 0x0A0F1A
@@ -84,6 +85,21 @@ static lv_obj_t *pump_temp_labels[10];
 static lv_obj_t *pump_speed_labels[10];
 static lv_obj_t *fan_temp_labels[10];
 static lv_obj_t *fan_speed_labels[10];
+
+static void sync_local_to_settings(void) {
+  settings_set_pump_is_auto(pump_is_auto);
+  settings_set_pump_manual_on(pump_manual_on);
+  settings_set_pump_manual_speed(pump_manual_speed);
+  settings_set_fan_is_auto(fan_is_auto);
+  settings_set_fan_manual_on(fan_manual_on);
+  settings_set_fan_manual_speed(fan_manual_speed);
+  for (int i = 0; i < 10; i++) {
+    settings_set_pump_map_temp(i, pump_map[i].temp);
+    settings_set_pump_map_speed(i, pump_map[i].speed);
+    settings_set_fan_map_temp(i, fan_map[i].temp);
+    settings_set_fan_map_speed(i, fan_map[i].speed);
+  }
+}
 
 // ---------- Forward declarations for UI Event Handlers ----------
 static void update_pump_ui_state(void);
@@ -159,6 +175,7 @@ static void map_btn_cb(lv_event_t *e) {
     map[idx].temp = curr;
     lv_label_set_text_fmt(labels[idx], "%d°C", curr);
   }
+  sync_local_to_settings();
 }
 
 // Update PumP UI state (locks manual components if in auto mode)
@@ -257,24 +274,28 @@ static void update_fan_ui_state(void) {
 static void pump_mode_auto_cb(lv_event_t *e) {
   pump_is_auto = true;
   update_pump_ui_state();
+  sync_local_to_settings();
   ESP_LOGI(TAG, "Pump Mode set to AUTO");
 }
 
 static void pump_mode_man_cb(lv_event_t *e) {
   pump_is_auto = false;
   update_pump_ui_state();
+  sync_local_to_settings();
   ESP_LOGI(TAG, "Pump Mode set to MANUAL");
 }
 
 static void fan_mode_auto_cb(lv_event_t *e) {
   fan_is_auto = true;
   update_fan_ui_state();
+  sync_local_to_settings();
   ESP_LOGI(TAG, "Fan Mode set to AUTO");
 }
 
 static void fan_mode_man_cb(lv_event_t *e) {
   fan_is_auto = false;
   update_fan_ui_state();
+  sync_local_to_settings();
   ESP_LOGI(TAG, "Fan Mode set to MANUAL");
 }
 
@@ -289,6 +310,7 @@ static void pump_switch_cb(lv_event_t *e) {
     return;
   }
   pump_manual_on = lv_obj_has_state(ui_Pump_Switch, LV_STATE_CHECKED);
+  sync_local_to_settings();
   ESP_LOGI(TAG, "Pump Switch toggled: %s", pump_manual_on ? "ON" : "OFF");
 }
 
@@ -301,6 +323,7 @@ static void pump_slider_cb(lv_event_t *e) {
   }
   pump_manual_speed = lv_slider_get_value(ui_Pump_Slider);
   lv_label_set_text_fmt(ui_Pump_Slider_Label, "%d%%", pump_manual_speed);
+  sync_local_to_settings();
   ESP_LOGI(TAG, "Pump Slider speed updated: %d%%", pump_manual_speed);
 }
 
@@ -315,6 +338,7 @@ static void fan_switch_cb(lv_event_t *e) {
     return;
   }
   fan_manual_on = lv_obj_has_state(ui_Fan_Switch, LV_STATE_CHECKED);
+  sync_local_to_settings();
   ESP_LOGI(TAG, "Fan Switch toggled: %s", fan_manual_on ? "ON" : "OFF");
 }
 
@@ -327,12 +351,27 @@ static void fan_slider_cb(lv_event_t *e) {
   }
   fan_manual_speed = lv_slider_get_value(ui_Fan_Slider);
   lv_label_set_text_fmt(ui_Fan_Slider_Label, "%d%%", fan_manual_speed);
+  sync_local_to_settings();
   ESP_LOGI(TAG, "Fan Slider speed updated: %d%%", fan_manual_speed);
 }
 
 // Main screen creation function
 void ui_Screen9_screen_init(void) {
   ESP_LOGI(TAG, "Lazy-initializing ui_Screen9");
+
+  // Load persistent configurations
+  pump_is_auto = settings_get_pump_is_auto();
+  pump_manual_on = settings_get_pump_manual_on();
+  pump_manual_speed = settings_get_pump_manual_speed();
+  fan_is_auto = settings_get_fan_is_auto();
+  fan_manual_on = settings_get_fan_manual_on();
+  fan_manual_speed = settings_get_fan_manual_speed();
+  for (int i = 0; i < 10; i++) {
+    pump_map[i].temp = settings_get_pump_map_temp(i);
+    pump_map[i].speed = settings_get_pump_map_speed(i);
+    fan_map[i].temp = settings_get_fan_map_temp(i);
+    fan_map[i].speed = settings_get_fan_map_speed(i);
+  }
 
   // Reset local lists to prevent stray pointers
   memset(pump_temp_labels, 0, sizeof(pump_temp_labels));
@@ -363,20 +402,7 @@ void ui_Screen9_screen_init(void) {
   lv_label_set_text(title, "AIR TO WATER INTERCOOLER");
   lv_obj_set_style_text_color(title, lv_color_hex(CLR_CYAN), 0);
   lv_obj_set_style_text_font(title, &montserrat_20_en_ru, 0);
-  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);
-
-  ui_Screen9_CLT_Val = lv_label_create(header_panel);
-  lv_label_set_text(ui_Screen9_CLT_Val, "CLT: -- °C");
-  lv_obj_set_style_text_color(ui_Screen9_CLT_Val, lv_color_hex(CLR_TEXT_DIM),
-                              0);
-  lv_obj_set_style_text_font(ui_Screen9_CLT_Val, &lv_font_montserrat_14, 0);
-  lv_obj_align(ui_Screen9_CLT_Val, LV_ALIGN_BOTTOM_LEFT, 20, -8);
-
-  ui_Screen9_IAT_Val = lv_label_create(header_panel);
-  lv_label_set_text(ui_Screen9_IAT_Val, "IAT: -- °C");
-  lv_obj_set_style_text_color(ui_Screen9_IAT_Val, lv_color_hex(CLR_GREEN), 0);
-  lv_obj_set_style_text_font(ui_Screen9_IAT_Val, &lv_font_montserrat_14, 0);
-  lv_obj_align(ui_Screen9_IAT_Val, LV_ALIGN_BOTTOM_RIGHT, -20, -8);
+  lv_obj_align(title, LV_ALIGN_CENTER, 0, 0);
 
   // ==========================================
   // LEFT COLUMN: COOLANT PUMP (CYAN)
@@ -912,6 +938,7 @@ void ui_Screen9_screen_destroy(void) {
 
   ui_Screen9_CLT_Val = NULL;
   ui_Screen9_IAT_Val = NULL;
+  ui_Screen9_RPM_Val = NULL;
 
   memset(pump_temp_labels, 0, sizeof(pump_temp_labels));
   memset(pump_speed_labels, 0, sizeof(pump_speed_labels));
@@ -944,6 +971,9 @@ void ui_Screen9_update(void) {
                                     : lv_color_hex(CLR_TEXT_WHITE),
                                 0);
     lv_label_set_text_fmt(ui_Screen9_CLT_Val, "CLT: %.0f °C", data.clt_temp);
+  }
+  if (ui_Screen9_RPM_Val) {
+    lv_label_set_text_fmt(ui_Screen9_RPM_Val, "RPM: %.0f rpm", data.engine_rpm);
   }
   if (ui_Screen9_IAT_Val) {
     lv_obj_set_style_text_color(ui_Screen9_IAT_Val,
@@ -995,7 +1025,7 @@ void ui_Screen9_update(void) {
 extern bool example_lvgl_lock(int timeout_ms);
 extern void example_lvgl_unlock(void);
 
-bool ui_Screen9_get_pump_is_auto(void) { return pump_is_auto; }
+bool ui_Screen9_get_pump_is_auto(void) { return settings_get_pump_is_auto(); }
 void ui_Screen9_set_pump_is_auto(bool is_auto) {
   pump_is_auto = is_auto;
   if (ui_Screen9) {
@@ -1004,9 +1034,10 @@ void ui_Screen9_set_pump_is_auto(bool is_auto) {
       example_lvgl_unlock();
     }
   }
+  sync_local_to_settings();
 }
 
-bool ui_Screen9_get_pump_manual_on(void) { return pump_manual_on; }
+bool ui_Screen9_get_pump_manual_on(void) { return settings_get_pump_manual_on(); }
 void ui_Screen9_set_pump_manual_on(bool manual_on) {
   pump_manual_on = manual_on;
   if (ui_Screen9 && ui_Pump_Switch) {
@@ -1019,9 +1050,10 @@ void ui_Screen9_set_pump_manual_on(bool manual_on) {
       example_lvgl_unlock();
     }
   }
+  sync_local_to_settings();
 }
 
-int ui_Screen9_get_pump_manual_speed(void) { return pump_manual_speed; }
+int ui_Screen9_get_pump_manual_speed(void) { return settings_get_pump_manual_speed(); }
 void ui_Screen9_set_pump_manual_speed(int speed) {
   if (speed < 0) speed = 0;
   if (speed > 100) speed = 100;
@@ -1035,9 +1067,10 @@ void ui_Screen9_set_pump_manual_speed(int speed) {
       example_lvgl_unlock();
     }
   }
+  sync_local_to_settings();
 }
 
-bool ui_Screen9_get_fan_is_auto(void) { return fan_is_auto; }
+bool ui_Screen9_get_fan_is_auto(void) { return settings_get_fan_is_auto(); }
 void ui_Screen9_set_fan_is_auto(bool is_auto) {
   fan_is_auto = is_auto;
   if (ui_Screen9) {
@@ -1046,9 +1079,10 @@ void ui_Screen9_set_fan_is_auto(bool is_auto) {
       example_lvgl_unlock();
     }
   }
+  sync_local_to_settings();
 }
 
-bool ui_Screen9_get_fan_manual_on(void) { return fan_manual_on; }
+bool ui_Screen9_get_fan_manual_on(void) { return settings_get_fan_manual_on(); }
 void ui_Screen9_set_fan_manual_on(bool manual_on) {
   fan_manual_on = manual_on;
   if (ui_Screen9 && ui_Fan_Switch) {
@@ -1061,9 +1095,10 @@ void ui_Screen9_set_fan_manual_on(bool manual_on) {
       example_lvgl_unlock();
     }
   }
+  sync_local_to_settings();
 }
 
-int ui_Screen9_get_fan_manual_speed(void) { return fan_manual_speed; }
+int ui_Screen9_get_fan_manual_speed(void) { return settings_get_fan_manual_speed(); }
 void ui_Screen9_set_fan_manual_speed(int speed) {
   if (speed < 0) speed = 0;
   if (speed > 100) speed = 100;
@@ -1077,11 +1112,12 @@ void ui_Screen9_set_fan_manual_speed(int speed) {
       example_lvgl_unlock();
     }
   }
+  sync_local_to_settings();
 }
 
 int ui_Screen9_get_pump_map_temp(int idx) {
   if (idx < 0 || idx >= 10) return 0;
-  return pump_map[idx].temp;
+  return settings_get_pump_map_temp(idx);
 }
 
 void ui_Screen9_set_pump_map_temp(int idx, int temp) {
@@ -1093,11 +1129,12 @@ void ui_Screen9_set_pump_map_temp(int idx, int temp) {
       example_lvgl_unlock();
     }
   }
+  sync_local_to_settings();
 }
 
 int ui_Screen9_get_pump_map_speed(int idx) {
   if (idx < 0 || idx >= 10) return 0;
-  return pump_map[idx].speed;
+  return settings_get_pump_map_speed(idx);
 }
 
 void ui_Screen9_set_pump_map_speed(int idx, int speed) {
@@ -1111,11 +1148,12 @@ void ui_Screen9_set_pump_map_speed(int idx, int speed) {
       example_lvgl_unlock();
     }
   }
+  sync_local_to_settings();
 }
 
 int ui_Screen9_get_fan_map_temp(int idx) {
   if (idx < 0 || idx >= 10) return 0;
-  return fan_map[idx].temp;
+  return settings_get_fan_map_temp(idx);
 }
 
 void ui_Screen9_set_fan_map_temp(int idx, int temp) {
@@ -1127,11 +1165,12 @@ void ui_Screen9_set_fan_map_temp(int idx, int temp) {
       example_lvgl_unlock();
     }
   }
+  sync_local_to_settings();
 }
 
 int ui_Screen9_get_fan_map_speed(int idx) {
   if (idx < 0 || idx >= 10) return 0;
-  return fan_map[idx].speed;
+  return settings_get_fan_map_speed(idx);
 }
 
 void ui_Screen9_set_fan_map_speed(int idx, int speed) {
@@ -1145,4 +1184,5 @@ void ui_Screen9_set_fan_map_speed(int idx, int speed) {
       example_lvgl_unlock();
     }
   }
+  sync_local_to_settings();
 }

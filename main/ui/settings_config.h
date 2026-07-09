@@ -66,11 +66,17 @@ typedef struct {
   bool show_knock_retard;
   bool show_boost_act;
   bool show_ambient_temp;
+  bool show_mre_map;
+  bool show_mre_wastegate;
+  bool mre_parallel;
   bool send_ambient_temp_to_can;
   float ambient_can_temp;
 
   // Unit settings for each gauge
   uint8_t gauge_units[32];
+
+  // Source settings for each gauge (0=AUTO, 1=RAW, 2=DIAG)
+  uint8_t gauge_sources[32];
 
   // VAG Diagnostic Emulation Settings
   uint8_t diag_address;
@@ -81,6 +87,30 @@ typedef struct {
   char diag_sw_version[8];
   char diag_vin[20];
   uint32_t diag_coding;
+
+  // Screen 9 (Pump & Fan) Settings
+  bool pump_is_auto;
+  bool pump_manual_on;
+  uint8_t pump_manual_speed;
+  bool fan_is_auto;
+  bool fan_manual_on;
+  uint8_t fan_manual_speed;
+  int pump_map_temp[10];
+  int pump_map_speed[10];
+  int fan_map_temp[10];
+  int fan_map_speed[10];
+
+  // Screen 10 (Wastegate & BOV) Settings
+  bool wg_is_auto;
+  uint8_t wg_manual_pos;
+  bool wg_is_inverted;
+  bool bov_is_auto;
+  bool bov_manual_open;
+  uint8_t bov_tps_threshold;
+  uint8_t bov_press_threshold;
+  uint8_t bov_open_duration;
+  bool bov_stat_enabled;
+  uint8_t bov_stat_ratio;
 } touch_settings_t;
 
 
@@ -116,6 +146,8 @@ void ui_Screen2_update_arcs_visibility(void);
 // CAN Platform control
 CanPlatform settings_get_can_platform(void);
 void settings_set_can_platform(CanPlatform platform);
+bool settings_get_mre_parallel(void);
+void settings_set_mre_parallel(bool enabled);
 
 // Boot sound path control
 const char *settings_get_boot_sound_path(void);
@@ -133,6 +165,50 @@ void settings_set_send_ambient_temp_to_can(bool enabled);
 bool settings_get_send_ambient_temp_to_can(void);
 void settings_set_ambient_can_temp(float temp);
 float settings_get_ambient_can_temp(void);
+
+// Screen 9 Persistent Getters/Setters
+bool settings_get_pump_is_auto(void);
+void settings_set_pump_is_auto(bool is_auto);
+bool settings_get_pump_manual_on(void);
+void settings_set_pump_manual_on(bool manual_on);
+int settings_get_pump_manual_speed(void);
+void settings_set_pump_manual_speed(int speed);
+bool settings_get_fan_is_auto(void);
+void settings_set_fan_is_auto(bool is_auto);
+bool settings_get_fan_manual_on(void);
+void settings_set_fan_manual_on(bool manual_on);
+int settings_get_fan_manual_speed(void);
+void settings_set_fan_manual_speed(int speed);
+int settings_get_pump_map_temp(int idx);
+void settings_set_pump_map_temp(int idx, int temp);
+int settings_get_pump_map_speed(int idx);
+void settings_set_pump_map_speed(int idx, int speed);
+int settings_get_fan_map_temp(int idx);
+void settings_set_fan_map_temp(int idx, int temp);
+int settings_get_fan_map_speed(int idx);
+void settings_set_fan_map_speed(int idx, int speed);
+
+// Screen 10 Persistent Getters/Setters
+bool settings_get_wg_is_auto(void);
+void settings_set_wg_is_auto(bool is_auto);
+int settings_get_wg_manual_pos(void);
+void settings_set_wg_manual_pos(int pos);
+bool settings_get_wg_is_inverted(void);
+void settings_set_wg_is_inverted(bool inverted);
+bool settings_get_bov_is_auto(void);
+void settings_set_bov_is_auto(bool is_auto);
+bool settings_get_bov_manual_open(void);
+void settings_set_bov_manual_open(bool open);
+int settings_get_bov_tps_threshold(void);
+void settings_set_bov_tps_threshold(int val);
+int settings_get_bov_press_threshold(void);
+void settings_set_bov_press_threshold(int val);
+int settings_get_bov_open_duration(void);
+void settings_set_bov_open_duration(int val);
+bool settings_get_bov_stat_enabled(void);
+void settings_set_bov_stat_enabled(bool enabled);
+int settings_get_bov_stat_ratio(void);
+void settings_set_bov_stat_ratio(int val);
 
 #ifdef __cplusplus
 } /*extern "C"*/

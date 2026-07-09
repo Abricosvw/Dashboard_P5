@@ -88,5 +88,17 @@ scratch/
 *.dbc
 *.xlsx
 build_log.txt
+build_out.txt
 scratch_update_layout*.py
 scratch_update_s*.py
+
+# Diagnostic logs, maps, and local tuning directories
+*.trc
+*AI-*
+*ecu map*
+71831_2/
+DSG dq250/
+bosch ecu me 17.5.6 map*/
+photo video/
+*.csv
+*.jpg

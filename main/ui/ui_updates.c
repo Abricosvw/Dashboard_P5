@@ -6,6 +6,7 @@
 #include "screens/ui_Screen9.h"
 #include "screens/ui_Screen10.h"
 #include "screens/ui_Screen11.h"
+#include "screens/ui_Screen12.h"
 #include "ui.h"
 #include "wifi_controller.h"
 #include <stdio.h>
@@ -23,6 +24,36 @@ void update_gauge(gauge_id_t id, lv_obj_t *arc, lv_obj_t *label, float value,
                   bool invert_logic, lv_color_t normal_color) {
   if (arc == NULL && label == NULL)
     return;
+
+  // Dynamic Title Override for rusEFI MRE Platform
+  lv_obj_t *parent = arc ? lv_obj_get_parent(arc) : NULL;
+  if (parent) {
+    lv_obj_t *title_label = lv_obj_get_child(parent, 0);
+    if (title_label && title_label != label) {
+      if (settings_get_can_platform() == PLATFORM_RUSEFI_MRE) {
+        if (id == GAUGE_MAP || id == GAUGE_BOOST_ACT) {
+          lv_label_set_text(title_label, "MAP sensor MRE");
+        } else if (id == GAUGE_BOOST) {
+          lv_label_set_text(title_label, "MAP Target MRE");
+        } else if (id == GAUGE_WASTEGATE || id == GAUGE_WG_POS) {
+          lv_label_set_text(title_label, "Westgate MRE");
+        }
+      } else {
+        // Restore default titles for non-MRE platforms
+        if (id == GAUGE_MAP) {
+          lv_label_set_text(title_label, "MAP Pressure");
+        } else if (id == GAUGE_BOOST_ACT) {
+          lv_label_set_text(title_label, "Actual Boost");
+        } else if (id == GAUGE_BOOST) {
+          lv_label_set_text(title_label, "Target Boost");
+        } else if (id == GAUGE_WASTEGATE) {
+          lv_label_set_text(title_label, "WG Target");
+        } else if (id == GAUGE_WG_POS) {
+          lv_label_set_text(title_label, "WG Position");
+        }
+      }
+    }
+  }
 
   float converted_value = value;
   float converted_warn = warn_thr;
@@ -317,9 +348,9 @@ void update_all_gauges(void) {
                "%.1f", 110, 120, false, lv_color_hex(0x00D4FF));
 
   // Boost (Target): Cyan.
-  if (ui_Arc_Boost && ui_Label_Boost_Value) {
-    update_gauge(GAUGE_BOOST, ui_Arc_Boost, ui_Label_Boost_Value, data.map_kpa, "%.0f", 200,
-                 230, false, lv_color_hex(0x00D4FF));
+  if (ui_Arc_Boost || ui_Label_Boost_Value) {
+    update_gauge(GAUGE_BOOST, ui_Arc_Boost, ui_Label_Boost_Value, data.target_boost, "%.0f", 200,
+                 230, false, lv_color_hex(0x00FF88));
   }
 
   // --- Screen 2 ---
@@ -389,8 +420,17 @@ void update_all_gauges(void) {
                3.0f, 6.0f, false, lv_color_hex(0xFFCC00));
   update_gauge(GAUGE_BOOST_ACT, ui_Arc_Boost_Act, ui_Label_Boost_Act_Value, data.map_kpa, "%.0f",
                200, 230, false, lv_color_hex(0x00D4FF));
+  // Ambient Temp: Purple
   update_gauge(GAUGE_AMBIENT_TEMP, ui_Arc_Ambient_Temp, ui_Label_Ambient_Temp_Value, data.ambient_temp, "%.0f",
-               45, 55, false, lv_color_hex(0x00FF88));
+               45.0f, 55.0f, false, lv_color_hex(0x8A2BE2));
+
+  // MRE MAP: Cyan
+  update_gauge(GAUGE_MRE_MAP, ui_Arc_MRE_MAP, ui_Label_MRE_MAP_Value, data.mre_map_kpa, "%.1f",
+               200, 230, false, lv_color_hex(0x00D4FF));
+
+  // MRE Wastegate: Green
+  update_gauge(GAUGE_MRE_WASTEGATE, ui_Arc_MRE_Wastegate, ui_Label_MRE_Wastegate_Value, data.mre_wg_pos_percent, "%.1f",
+               110, 120, false, lv_color_hex(0x00FF88));
 
   // Periodic send of ambient temp if enabled (every 1.0s = 10 calls of 100ms update loop)
   static int send_can_counter = 0;
@@ -405,19 +445,45 @@ void update_all_gauges(void) {
   }
 
   // --- Gear Display (Screen 4) ---
-  char gear_str[16] = "N/A";
-  if (data.gear == 14) {
+  char gear_str[16] = "-";
+  if (data.selector_position == 2) {
     strcpy(gear_str, "P");
-  } else if (data.gear == 12) {
+  } else if (data.selector_position == 3) {
     strcpy(gear_str, "R");
-  } else if (data.gear == 13) {
+  } else if (data.selector_position == 4) {
     strcpy(gear_str, "N");
-  } else if (data.gear >= 2 && data.gear <= 10) {
-    snprintf(gear_str, sizeof(gear_str), "%d", data.gear - 1);
-  } else if (data.gear == 0) {
-    strcpy(gear_str, "-");
+  } else if (data.selector_position == 5) {
+    if (data.gear >= 2 && data.gear <= 10) {
+      snprintf(gear_str, sizeof(gear_str), "D%d", data.gear - 1);
+    } else {
+      strcpy(gear_str, "D");
+    }
+  } else if (data.selector_position == 6) {
+    if (data.gear >= 2 && data.gear <= 10) {
+      snprintf(gear_str, sizeof(gear_str), "S%d", data.gear - 1);
+    } else {
+      strcpy(gear_str, "S");
+    }
+  } else if (data.selector_position == 7) {
+    if (data.gear >= 2 && data.gear <= 10) {
+      snprintf(gear_str, sizeof(gear_str), "M%d", data.gear - 1);
+    } else {
+      strcpy(gear_str, "M");
+    }
   } else {
-    snprintf(gear_str, sizeof(gear_str), "%d", data.gear);
+    if (data.gear == 12) {
+      strcpy(gear_str, "R");
+    } else if (data.gear == 13) {
+      strcpy(gear_str, "N");
+    } else if (data.gear == 14) {
+      strcpy(gear_str, "P");
+    } else if (data.gear >= 2 && data.gear <= 10) {
+      snprintf(gear_str, sizeof(gear_str), "%d", data.gear - 1);
+    } else if (data.gear == 0) {
+      strcpy(gear_str, "-");
+    } else {
+      snprintf(gear_str, sizeof(gear_str), "%d", data.gear);
+    }
   }
 
   if (ui_Label_Gear) {
@@ -445,6 +511,8 @@ void update_all_gauges(void) {
       strcpy(sel_str, "D");
     } else if (data.selector_position == 6) {
       strcpy(sel_str, "S");
+    } else if (data.selector_position == 7) {
+      strcpy(sel_str, "M");
     } else {
       snprintf(sel_str, sizeof(sel_str), "%d", data.selector_position);
     }
@@ -528,4 +596,7 @@ void update_all_gauges(void) {
 
   // --- Screen 11 (VAG Diagnostic Scanner) ---
   ui_Screen11_update();
+
+  // --- Screen 12 (VAG Launch Control Diagnostics) ---
+  ui_Screen12_update();
 }

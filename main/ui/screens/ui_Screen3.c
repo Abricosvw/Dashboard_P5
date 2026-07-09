@@ -46,7 +46,7 @@ lv_obj_t *ui_Checkbox_CAN2 = NULL;
 
 // CAN Terminal state
 static int can_message_count = 0;
-static int can_sniffer_active = 1; // Sniffer mode active
+static int can_sniffer_active = 0; // Sniffer mode inactive by default
 static char search_text[64] = "";
 // static int update_speed_ms = 100;    // Removed global update speed
 

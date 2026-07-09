@@ -62,6 +62,139 @@ static int l_get_engine_temp(lua_State *L) {
     return 1;
 }
 
+static int l_get_tps(lua_State *L) {
+    ecu_data_t data;
+    ecu_data_get_copy(&data);
+    lua_pushnumber(L, data.tps_position);
+    return 1;
+}
+
+static int l_get_pedal(lua_State *L) {
+    ecu_data_t data;
+    ecu_data_get_copy(&data);
+    lua_pushnumber(L, data.abs_pedal_pos);
+    return 1;
+}
+
+static int l_get_map(lua_State *L) {
+    ecu_data_t data;
+    ecu_data_get_copy(&data);
+    lua_pushnumber(L, data.map_kpa);
+    return 1;
+}
+
+static int l_get_engine_torque(lua_State *L) {
+    ecu_data_t data;
+    ecu_data_get_copy(&data);
+    lua_pushnumber(L, data.eng_act_nm);
+    return 1;
+}
+
+static int l_get_target_torque(lua_State *L) {
+    ecu_data_t data;
+    ecu_data_get_copy(&data);
+    lua_pushnumber(L, data.eng_trg_nm);
+    return 1;
+}
+
+static int l_get_tcu_torque_req(lua_State *L) {
+    ecu_data_t data;
+    ecu_data_get_copy(&data);
+    lua_pushnumber(L, data.tcu_tq_req_nm);
+    return 1;
+}
+
+static int l_get_tcu_torque_act(lua_State *L) {
+    ecu_data_t data;
+    ecu_data_get_copy(&data);
+    lua_pushnumber(L, data.tcu_tq_act_nm);
+    return 1;
+}
+
+static int l_get_gear(lua_State *L) {
+    ecu_data_t data;
+    ecu_data_get_copy(&data);
+    lua_pushinteger(L, data.gear);
+    return 1;
+}
+
+static int l_get_selector_position(lua_State *L) {
+    ecu_data_t data;
+    ecu_data_get_copy(&data);
+    lua_pushinteger(L, data.selector_position);
+    return 1;
+}
+
+static int l_get_trans_temp(lua_State *L) {
+    ecu_data_t data;
+    ecu_data_get_copy(&data);
+    lua_pushnumber(L, data.trans_temp);
+    return 1;
+}
+
+static int l_get_afr(lua_State *L) {
+    ecu_data_t data;
+    ecu_data_get_copy(&data);
+    lua_pushnumber(L, data.afr_val);
+    return 1;
+}
+
+static int l_get_afr_target(lua_State *L) {
+    ecu_data_t data;
+    ecu_data_get_copy(&data);
+    lua_pushnumber(L, data.afr_target);
+    return 1;
+}
+
+static int l_get_egt(lua_State *L) {
+    ecu_data_t data;
+    ecu_data_get_copy(&data);
+    lua_pushnumber(L, data.egt_temp);
+    return 1;
+}
+
+static int l_get_knock_retard(lua_State *L) {
+    ecu_data_t data;
+    ecu_data_get_copy(&data);
+    lua_pushnumber(L, data.knock_retard);
+    return 1;
+}
+
+static int l_get_vehicle_speed(lua_State *L) {
+    ecu_data_t data;
+    ecu_data_get_copy(&data);
+    lua_pushnumber(L, data.vehicle_speed);
+    return 1;
+}
+
+static int l_get_dsg_shift_active(lua_State *L) {
+    ecu_data_t data;
+    ecu_data_get_copy(&data);
+    lua_pushboolean(L, data.dsg_shift_active);
+    return 1;
+}
+
+static int l_get_dsg_blip_active(lua_State *L) {
+    ecu_data_t data;
+    ecu_data_get_copy(&data);
+    lua_pushboolean(L, data.dsg_blip_active);
+    return 1;
+}
+
+static int l_get_asr_active(lua_State *L) {
+    ecu_data_t data;
+    ecu_data_get_copy(&data);
+    lua_pushboolean(L, data.asr_active);
+    return 1;
+}
+
+static int l_get_esp_active(lua_State *L) {
+    ecu_data_t data;
+    ecu_data_get_copy(&data);
+    lua_pushboolean(L, data.esp_active);
+    return 1;
+}
+
 static int l_set_fan_speed(lua_State *L) {
     int speed = luaL_checkinteger(L, 1);
     ESP_LOGI(TAG, "Virtual Fan Speed set to: %d%%", speed);
@@ -250,7 +383,8 @@ static int l_txCan(lua_State *L) {
     } else {
         // Log to UI sniffer as TX
         extern void ui_process_real_can_message_bus(uint8_t bus_id, uint32_t id, uint8_t *data, uint8_t dlc, bool is_tx);
-        if (example_lvgl_lock(10)) {
+        extern int ui_get_can_sniffer_active(void);
+        if (ui_get_can_sniffer_active() && example_lvgl_lock(10)) {
             ui_process_real_can_message_bus(bus, msg.identifier, msg.data, msg.data_length_code, true); // true = TX
             example_lvgl_unlock();
         }
@@ -369,7 +503,7 @@ static int l_setLuaGauge(lua_State *L) {
             case GAUGE_WASTEGATE: state->wg_set_percent = g->val; break;
             case GAUGE_TPS: state->tps_position = g->val; break;
             case GAUGE_RPM: state->engine_rpm = g->val; break;
-            case GAUGE_BOOST: state->wg_pos_percent = g->val; break;
+            case GAUGE_BOOST: state->target_boost = g->val; break;
             case GAUGE_OIL_PRESS: state->oil_pressure = g->val; break;
             case GAUGE_OIL_TEMP: state->oil_temp = g->val; break;
             case GAUGE_WATER_TEMP: state->clt_temp = g->val; break;
@@ -384,6 +518,14 @@ static int l_setLuaGauge(lua_State *L) {
             case GAUGE_EGT: state->egt_temp = g->val; break;
             case GAUGE_KNOCK_RETARD: state->knock_retard = g->val; break;
             case GAUGE_AMBIENT_TEMP: state->ambient_temp = g->val; break;
+            case GAUGE_TCU_REQ: state->tcu_tq_req_nm = g->val; break;
+            case GAUGE_TCU_ACT: state->tcu_tq_act_nm = g->val; break;
+            case GAUGE_ENG_REQ: state->eng_trg_nm = g->val; break;
+            case GAUGE_ENG_ACT: state->eng_act_nm = g->val; break;
+            case GAUGE_LIMIT_TQ: state->limit_tq_nm = g->val; break;
+            case GAUGE_BOOST_ACT: state->map_kpa = g->val; break;
+            case GAUGE_MRE_MAP: state->mre_map_kpa = g->val; break;
+            case GAUGE_MRE_WASTEGATE: state->mre_wg_pos_percent = g->val; break;
             default:
                 if (g->id == 1) state->tps_position = g->val;
                 else if (g->id == 2) state->engine_rpm = g->val;
@@ -595,6 +737,11 @@ static int l_set_wg_map_pos(lua_State *L) {
     return 0;
 }
 
+static int l_get_wg_is_inverted(lua_State *L) {
+    lua_pushboolean(L, ui_Screen10_get_wg_is_inverted());
+    return 1;
+}
+
 static int l_get_bov_actual_state(lua_State *L) {
     lua_pushinteger(L, ui_Screen10_get_actual_bov_state());
     return 1;
@@ -687,6 +834,25 @@ typedef struct {
 static const lua_binding_t g_lua_bindings[] = {
     {"get_rpm", l_get_rpm, "get_rpm() - Returns the current Engine RPM as a number."},
     {"get_engine_temp", l_get_engine_temp, "get_engine_temp() - Returns coolant temp in Celsius."},
+    {"get_tps", l_get_tps, "get_tps() - Returns current throttle position (%)."},
+    {"get_pedal", l_get_pedal, "get_pedal() - Returns accelerator pedal position (%)."},
+    {"get_map", l_get_map, "get_map() - Returns manifold absolute pressure (kPa)."},
+    {"get_engine_torque", l_get_engine_torque, "get_engine_torque() - Returns actual engine torque (Nm)."},
+    {"get_target_torque", l_get_target_torque, "get_target_torque() - Returns driver target torque (Nm)."},
+    {"get_tcu_torque_req", l_get_tcu_torque_req, "get_tcu_torque_req() - Returns DSG requested torque (Nm)."},
+    {"get_tcu_torque_act", l_get_tcu_torque_act, "get_tcu_torque_act() - Returns gearbox actual torque (Nm)."},
+    {"get_gear", l_get_gear, "get_gear() - Returns active gear (P=0, R=14, N=15, 1-7)."},
+    {"get_selector_position", l_get_selector_position, "get_selector_position() - Returns selector position (P, R, N, D, S)."},
+    {"get_trans_temp", l_get_trans_temp, "get_trans_temp() - Returns transmission oil temperature (C)."},
+    {"get_afr", l_get_afr, "get_afr() - Returns actual lambda value."},
+    {"get_afr_target", l_get_afr_target, "get_afr_target() - Returns target lambda value."},
+    {"get_egt", l_get_egt, "get_egt() - Returns exhaust gas temperature (C)."},
+    {"get_knock_retard", l_get_knock_retard, "get_knock_retard() - Returns ignition timing retard (degrees)."},
+    {"get_vehicle_speed", l_get_vehicle_speed, "get_vehicle_speed() - Returns vehicle speed (km/h)."},
+    {"get_dsg_shift_active", l_get_dsg_shift_active, "get_dsg_shift_active() - Returns true if DSG shifting is in progress."},
+    {"get_dsg_blip_active", l_get_dsg_blip_active, "get_dsg_blip_active() - Returns true if DSG downshift rev-match blip is active."},
+    {"get_asr_active", l_get_asr_active, "get_asr_active() - Returns true if traction control (ASR) is active."},
+    {"get_esp_active", l_get_esp_active, "get_esp_active() - Returns true if stability control (ESP) is active."},
     {"set_fan_speed", l_set_fan_speed, "set_fan_speed(speed) - Sets virtual fan speed (0-100%)."},
     {"show_warning", l_show_warning, "show_warning(\"msg\") - Shows a popup warning on the UI."},
     {"log", l_log_message, "log(\"msg\") - Prints a message to the ESP32 serial console."},
@@ -737,6 +903,7 @@ static const lua_binding_t g_lua_bindings[] = {
     {"set_wg_map_rpm", l_set_wg_map_rpm, "set_wg_map_rpm(idx, rpm) - Sets wastegate map RPM at index idx (0-9)."},
     {"get_wg_map_pos", l_get_wg_map_pos, "get_wg_map_pos(idx) - Gets wastegate map position at index idx (0-9)."},
     {"set_wg_map_pos", l_set_wg_map_pos, "set_wg_map_pos(idx, pos) - Sets wastegate map position at index idx (0-9)."},
+    {"get_wg_is_inverted", l_get_wg_is_inverted, "get_wg_is_inverted() - Returns true if wastegate VGT direction is inverted."},
     {"get_bov_actual_state", l_get_bov_actual_state, "get_bov_actual_state() - Returns actual blow-off solenoid state (0=closed, 100=open)."},
     {"get_bov_mode", l_get_bov_mode, "get_bov_mode() - Returns true if blow-off is in AUTO mode."},
     {"set_bov_mode", l_set_bov_mode, "set_bov_mode(auto) - Sets blow-off mode to AUTO (true) or MANUAL (false)."},
@@ -821,6 +988,16 @@ static void lua_background_task(void *pvParameters) {
 void lua_manager_handle_can_rx(uint32_t id, const uint8_t *data, uint8_t dlc) {
     if (!L || !lua_mutex || !g_bg_script_loaded) return;
     
+    // Quick lock-free pre-check of registered filters
+    bool filter_matched = false;
+    for (int i = 0; i < g_can_rx_filter_count; i++) {
+        if (g_can_rx_filters[i].id == id) {
+            filter_matched = true;
+            break;
+        }
+    }
+    if (!filter_matched) return; // Exit early to avoid mutex contention
+    
     if (xSemaphoreTake(lua_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         for (int i = 0; i < g_can_rx_filter_count; i++) {
             if (g_can_rx_filters[i].id == id) {
@@ -878,21 +1055,20 @@ void lua_manager_handle_can_rx(uint32_t id, const uint8_t *data, uint8_t dlc) {
 
 static const char *DEFAULT_LUA_SCRIPT = 
     "setTickRate(10)\n"
+    "log('LUA BOOT: Running version 2.0.4 - DSG Auto Mode & Dual MAP')\n"
     "tpsSensor = Sensor.new('tps1')\n"
     "rpmSensor = Sensor.new('rpm')\n"
     "cltSensor = Sensor.new('clt')\n"
     "iatSensor = Sensor.new('Iat')\n\n"
-    "local current_rpm = 0\n"
-    "local current_tps = 0\n"
-    "local current_clt = 90\n"
-    "local current_iat = 40\n"
     "local last_tps_for_bov = 0\n"
-    "local bov_open_timer = 0\n\n"
+    "local bov_open_timer = 0\n"
+    "local tick_counter = 0\n"
+    "b_error_sum = 0\n"
+    "b_last_error = 0\n"
     "-- MRE Link Monitoring\n"
     "local mre_link_ok = false\n"
     "local mre_rx_count = 0\n"
     "local mre_last_rx_tick = 0\n"
-    "local tick_counter = 0\n"
     "local BOOT_GRACE_TICKS = 300  -- 30 sec at 10Hz\n"
     "local MRE_TIMEOUT_TICKS = 30  -- 3 sec at 10Hz\n"
     "local mre_warned = false\n\n"
@@ -911,21 +1087,20 @@ static const char *DEFAULT_LUA_SCRIPT =
     "    end\n"
     "    return map_y_fn(9)\n"
     "end\n\n"
-    "function onVehicleMotor1(bus, id, dlc, data)\n"
-    "    current_tps = getBitRange(data, 40, 8) * 0.40\n"
-    "    -- Using 0.39 scale as defined in the user's MRE configuration\n"
-    "    current_rpm = getBitRange(data, 16, 16) * 0.39\n"
-    "    \n"
-    "    tpsSensor:set(current_tps)\n"
-    "    rpmSensor:set(current_rpm)\n"
-    "end\n\n"
-    "function onVehicleMotor2(bus, id, dlc, data)\n"
-    "    current_clt = getBitRange(data, 8, 8) * 0.75 - 48\n"
-    "    cltSensor:set(current_clt)\n"
-    "end\n\n"
-    "function onVehicleMotor3(bus, id, dlc, data)\n"
-    "    current_iat = getBitRange(data, 8, 8) * 0.75 - 48\n"
-    "    iatSensor:set(current_iat)\n"
+    "function interpolate_table(input_val, rpm_tbl, pos_tbl)\n"
+    "    if input_val <= rpm_tbl[1] then return pos_tbl[1] end\n"
+    "    if input_val >= rpm_tbl[10] then return pos_tbl[10] end\n"
+    "    for i = 1, 9 do\n"
+    "        local x0 = rpm_tbl[i]\n"
+    "        local x1 = rpm_tbl[i + 1]\n"
+    "        if input_val >= x0 and input_val <= x1 then\n"
+    "            local y0 = pos_tbl[i]\n"
+    "            local y1 = pos_tbl[i + 1]\n"
+    "            if x1 == x0 then return y0 end\n"
+    "            return y0 + (input_val - x0) * (y1 - y0) / (x1 - x0)\n"
+    "        end\n"
+    "    end\n"
+    "    return pos_tbl[10]\n"
     "end\n\n"
     "function onMreStatus(bus, id, dlc, data)\n"
     "    mre_rx_count = mre_rx_count + 1\n"
@@ -937,13 +1112,14 @@ static const char *DEFAULT_LUA_SCRIPT =
     "    end\n"
     "    -- Read actual actuator positions from MRE\n"
     "    if dlc >= 2 then\n"
-    "        setLuaGauge(12, data[1])  -- WG actual pos\n"
-    "        setLuaGauge(13, data[2])  -- BOV actual state\n"
+    "        setLuaGauge(12, data[1])  -- WG actual pos (GAUGE_WG_POS)\n"
+    "        setLuaGauge(28, data[1])  -- MRE WG actual (GAUGE_MRE_WASTEGATE)\n"
+    "        setLuaGauge(13, data[2])  -- BOV actual state (GAUGE_BOV)\n"
+    "    end\n"
+    "    if dlc >= 3 then\n"
+    "        setLuaGauge(27, data[3])  -- MRE MAP (GAUGE_MRE_MAP)\n"
     "    end\n"
     "end\n\n"
-    "canRxAdd(1, 0x280, onVehicleMotor1)\n"
-    "canRxAdd(1, 0x288, onVehicleMotor2)\n"
-    "canRxAdd(1, 0x380, onVehicleMotor3)\n"
     "canRxAdd(1, 0x601, onMreStatus)\n\n"
     "function onTick()\n"
     "    tick_counter = tick_counter + 1\n\n"
@@ -958,48 +1134,189 @@ static const char *DEFAULT_LUA_SCRIPT =
     "            show_warning('MRE ECU Offline - check CAN wiring')\n"
     "        end\n"
     "    end\n\n"
-    "    -- Calculate targets (works with or without MRE)\n"
-    "    local wg_target = 0\n"
-    "    if get_wg_mode() == false then\n"
-    "        wg_target = get_wg_manual_pos()\n"
-    "    else\n"
-    "        wg_target = interpolate10(current_rpm, get_wg_map_rpm, get_wg_map_pos)\n"
-    "    end\n"
+    "    -- Read parameters natively parsed from CAN\n"
+    "    local rpm = get_rpm()\n"
+    "    local tps = get_tps()\n"
+    "    local pedal = get_pedal()\n"
+    "    local map = get_map()\n"
+    "    local clt = get_engine_temp()\n"
+    "    local dsg_shift = get_dsg_shift_active()\n"
+    "    local dsg_blip = get_dsg_blip_active()\n"
+    "    local esp = false -- get_esp_active() (Temporarily disabled)\n"
+    "    local asr = false -- get_asr_active() (Temporarily disabled)\n"
+    "    local tcu_req = get_tcu_torque_req()\n"
+    "    local eng_act = get_engine_torque()\n"
+    "    local eng_trg = get_target_torque()\n\n"
+    "    -- Update compatibility Sensors (Screen 1 & 2)\n"
+    "    tpsSensor:set(tps)\n"
+    "    rpmSensor:set(rpm)\n"
+    "    cltSensor:set(clt)\n\n"
+    "    -- 0. DSG Automatic Modes Profiles (D/S/M)\n"
+    "    local sel = get_selector_position()\n"
+    "    local target_boost = 100\n"
+    "    local bov_tps_thresh = 25\n"
+    "    local bov_press_thresh = 35\n"
+    "    local bov_hold_dur = 20\n"
+    "    local bov_stat_en = true\n"
+    "    local bov_stat_rat = 120\n\n"
+    "    local d_rpm = {1000, 1500, 2000, 2500, 3000, 3500, 4000, 5000, 6000, 7000}\n"
+    "    local d_val = {100,  110,  140,  160,  160,  160,  160,  150,  140,  130}\n"
+    "    local s_rpm = {1000, 1500, 2000, 2500, 3000, 3500, 4000, 5000, 6000, 7000}\n"
+    "    local s_val = {100,  120,  180,  250,  250,  250,  250,  240,  220,  200}\n\n"
+    "    if sel == 5 or sel == 0 then -- D (Drive) or unknown fallback\n"
+    "        target_boost = interpolate_table(rpm, d_rpm, d_val)\n"
+    "        bov_tps_thresh = 25\n"
+    "        bov_press_thresh = 35\n"
+    "        bov_hold_dur = 20\n"
+    "        bov_stat_en = true\n"
+    "        bov_stat_rat = 120\n"
+    "    elseif sel == 6 or sel == 7 then -- S (Sport) or M (Manual)\n"
+    "        target_boost = interpolate_table(rpm, s_rpm, s_val)\n"
+    "        bov_tps_thresh = 35\n"
+    "        bov_press_thresh = 50\n"
+    "        bov_hold_dur = 12\n"
+    "        bov_stat_en = false\n"
+    "        bov_stat_rat = 135\n"
+    "    elseif sel == 3 then -- R (Reverse)\n"
+    "        target_boost = 120 -- 0.2 bar (120 kPa) max\n"
+    "        bov_tps_thresh = 30\n"
+    "        bov_press_thresh = 40\n"
+    "        bov_hold_dur = 15\n"
+    "        bov_stat_en = true\n"
+    "        bov_stat_rat = 130\n"
+    "    else -- P, N (2, 4) or other safe states\n"
+    "        target_boost = 100 -- 0.0 bar (100 kPa) max\n"
+    "        bov_tps_thresh = 40\n"
+    "        bov_press_thresh = 60\n"
+    "        bov_hold_dur = 10\n"
+    "        bov_stat_en = false\n"
+    "        bov_stat_rat = 150\n"
+    "    end\n\n"
+    "    -- 1. Blow-off Valve (N249 Solenoid) Target (LDUVST)\n"
     "    local bov_target = 0\n"
     "    if get_bov_mode() == false then\n"
     "        bov_target = get_bov_manual_open() and 100 or 0\n"
     "    else\n"
-    "        local tps_drop = last_tps_for_bov - current_tps\n"
-    "        last_tps_for_bov = current_tps\n"
-    "        if tps_drop >= get_bov_tps_threshold() then\n"
-    "            bov_open_timer = get_bov_open_duration()\n"
-    "        end\n"
+    "        local trigger_bov = false\n\n"
+    "        -- Path A: Dynamic TPS Drop (GWPLDU)\n"
+    "        local tps_drop = last_tps_for_bov - tps\n"
+    "        last_tps_for_bov = tps\n"
+    "        if tps_drop >= bov_tps_thresh then\n"
+    "            trigger_bov = true\n"
+    "            log('BOV: TPS Drop limit exceeded')\n"
+    "        end\n\n"
+    "        -- Path B: DSG Gear Shift\n"
+    "        if dsg_shift then\n"
+    "            trigger_bov = true\n"
+    "            log('BOV: DSG Shift Active')\n"
+    "        end\n\n"
+    "        -- Path C: ESP/ASR Torque Intervention under Load\n"
+    "        if (esp or asr) and tps < 15 then\n"
+    "            trigger_bov = true\n"
+    "            log('BOV: ESP/ASR Torque Intervention')\n"
+    "        end\n\n"
+    "        -- Path D: Stationary Pressure Ratio limit (SVDLDUVS)\n"
+    "        if bov_stat_en then\n"
+    "            local actual_pr = map / 100.0\n"
+    "            local target_map = 100.0\n"
+    "            if pedal > 10 then\n"
+    "                target_map = 100.0 + (pedal * 1.5)\n"
+    "            end\n"
+    "            local target_pr = target_map / 100.0\n"
+    "            local pr_ratio = actual_pr / target_pr\n"
+    "            local limit_pr = bov_stat_rat / 100.0\n"
+    "            if pr_ratio >= limit_pr and map > (target_map + bov_press_thresh) then\n"
+    "                trigger_bov = true\n"
+    "                log('BOV: Stationary PR limit exceeded')\n"
+    "            end\n"
+    "        end\n\n"
+    "        if trigger_bov then\n"
+    "            bov_open_timer = bov_hold_dur\n"
+    "        end\n\n"
     "        if bov_open_timer > 0 then\n"
-    "            bov_target = 100\n"
+    "            local max_bov = 100\n"
+    "            -- Limit duty cycle to 30% if under load or high RPM to prevent sudden drop\n"
+    "            if pedal > 20 or tps > 20 or rpm > 4500 then\n"
+    "                max_bov = 30\n"
+    "            end\n"
+    "            bov_target = max_bov\n"
     "            bov_open_timer = bov_open_timer - 1\n"
     "        else\n"
     "            bov_target = 0\n"
     "        end\n"
-    "    end\n"
+    "    end\n\n"
+    "    -- 2. VGT Wastegate Target (Bosch LDR PID Boost Controller)\n"
+    "    local wg_target = 0\n"
+    "    if get_wg_mode() == false then\n"
+    "        wg_target = get_wg_manual_pos()\n"
+    "    else\n"
+    "        local actual_boost = map\n"
+    "        local error = target_boost - actual_boost\n\n"
+    "        -- PID calculation\n"
+    "        b_error_sum = b_error_sum + error\n"
+    "        -- Anti-windup (clamp integral error)\n"
+    "        local max_i = 300\n"
+    "        if b_error_sum > max_i then b_error_sum = max_i end\n"
+    "        if b_error_sum < -max_i then b_error_sum = -max_i end\n\n"
+    "        local d_error = error - b_last_error\n"
+    "        b_last_error = error\n\n"
+    "        local p_term = error * 0.8\n"
+    "        local i_term = b_error_sum * 0.05\n"
+    "        local d_term = d_error * 0.2\n\n"
+    "        -- Base feedforward: estimate wastegate duty cycle needed for target pressure ratio\n"
+    "        local pr = target_boost / 100.0\n"
+    "        local feedforward = 30.0 + (pr - 1.0) * 40.0\n"
+    "        if feedforward > 90 then feedforward = 90 end\n"
+    "        if feedforward < 0 then feedforward = 0 end\n\n"
+    "        local pid_output = feedforward + p_term + i_term + d_term\n"
+    "        if pid_output > 100 then pid_output = 100 end\n"
+    "        if pid_output < 0 then pid_output = 0 end\n\n"
+    "        -- Bosch LDR spool-up optimization:\n"
+    "        if pedal > 75 and error > 25 and actual_boost < (target_boost - 20) then\n"
+    "            wg_target = 100\n"
+    "        elseif dsg_shift then\n"
+    "            wg_target = 20  -- Dump backpressure during gear change\n"
+    "            b_error_sum = 0 -- Reset integrator\n"
+    "        elseif esp or asr then\n"
+    "            wg_target = 30  -- Traction intervention override\n"
+    "            b_error_sum = 0\n"
+    "        elseif pedal < 5 and rpm > 1500 then\n"
+    "            wg_target = 10  -- Eco/Overrun overrun\n"
+    "            b_error_sum = 0\n"
+    "        else\n"
+    "            wg_target = pid_output\n"
+    "        end\n"
+    "    end\n\n"
+    "    if get_wg_is_inverted() then\n"
+    "        wg_target = 100 - wg_target\n"
+    "    end\n\n"
+    "    -- 3. Intercooler Pump & Fan Targets\n"
     "    local pump_target = 0\n"
     "    if get_pump_mode() == false then\n"
     "        pump_target = get_pump_state() and get_pump_manual_speed() or 0\n"
     "    else\n"
-    "        pump_target = interpolate10(current_clt, get_pump_map_temp, get_pump_map_speed)\n"
+    "        pump_target = interpolate10(clt, get_pump_map_temp, get_pump_map_speed)\n"
     "    end\n"
     "    local fan_target = 0\n"
     "    if get_fan_mode() == false then\n"
     "        fan_target = get_fan_state() and get_fan_manual_speed() or 0\n"
     "    else\n"
-    "        fan_target = interpolate10(current_clt, get_fan_map_temp, get_fan_map_speed)\n"
+    "        fan_target = interpolate10(clt, get_fan_map_temp, get_fan_map_speed)\n"
     "    end\n\n"
-    "    -- Send command to MRE: [wg, bov, pump, fan, 0xAA, seq, link_status]\n"
+    "    -- 4. Send controller CAN broadcast message 0x600\n"
     "    local seq = tick_counter % 256\n"
     "    local link_byte = mre_link_ok and 1 or 0\n"
+    "    local status_byte = 0\n"
+    "    if dsg_shift then status_byte = status_byte + 1 end\n"
+    "    if dsg_blip then status_byte = status_byte + 2 end\n"
+    "    if esp then status_byte = status_byte + 4 end\n"
+    "    if asr then status_byte = status_byte + 8 end\n"
     "    txCan(1, 0x600, 0, { math.floor(wg_target), math.floor(bov_target),\n"
-    "        math.floor(pump_target), math.floor(fan_target), 0xAA, seq, link_byte })\n\n"
-    "    -- Update dashboard gauges locally (works without MRE)\n"
+    "        math.floor(pump_target), math.floor(fan_target), 0xAA, seq, link_byte, status_byte })\n\n"
+    "    -- Update screen dashboard actual targets\n"
     "    setLuaGauge(1, math.floor(wg_target))\n"
+    "    setLuaGauge(4, math.floor(target_boost))\n"
+    "    setLuaGauge(13, math.floor(bov_target))\n"
     "end\n";
 
 #include "esp_heap_caps.h"
@@ -1084,8 +1401,14 @@ esp_err_t lua_manager_init(void) {
             buffer[read_bytes] = '\0';
             fclose(f);
             
-            ESP_LOGI(TAG, "Persistent Lua script loaded from SD Card (%ld bytes).", (long)read_bytes);
-            lua_manager_save_background_script(buffer);
+            // Check if the script contains "version 2.0.5" to auto-upgrade old scripts
+            if (strstr(buffer, "version 2.0.5") == NULL) {
+                ESP_LOGW(TAG, "Existing boot_script.lua is outdated (missing version 2.0.5 support). Overwriting with new default.");
+                lua_manager_save_background_script(DEFAULT_LUA_SCRIPT);
+            } else {
+                ESP_LOGI(TAG, "Persistent Lua script loaded from SD Card (%ld bytes).", (long)read_bytes);
+                lua_manager_save_background_script(buffer);
+            }
             free(buffer);
         } else {
             fclose(f);

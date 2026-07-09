@@ -1,3 +1,4 @@
+# Force reconfigure to include screens/ui_Screen12.c
 file(GLOB_RECURSE UI_SOURCES "ui/*.c")
 
 idf_component_register(SRCS "main.c" "board_init.c" "main_gui.c" "can_manager.c" "diagnostic_manager.c" "diagnostic_tester.c" "diagnostic_poll.c" "can_websocket.c" "wifi_init.c" "wifi_controller.c" "wifi_storage.c" "sd_card_manager.c" "web_server.c" "settings_manager.c" "audio_manager.c" "ecu_data.c" "can_parser.c" "can_logger.c" "background_task.c" "ai_manager.c" "ai_commands.c" "lua_manager.c" "telegram_manager.c" "dsp_shim.c" "ui/ui_sound_selector.c" "ui/ui_font_montserrat_20_en_ru.c" ${UI_SOURCES}

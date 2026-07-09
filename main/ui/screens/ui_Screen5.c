@@ -36,6 +36,10 @@ lv_obj_t *ui_Arc_Boost_Act = NULL;
 lv_obj_t *ui_Label_Boost_Act_Value = NULL;
 lv_obj_t *ui_Arc_Ambient_Temp = NULL;
 lv_obj_t *ui_Label_Ambient_Temp_Value = NULL;
+lv_obj_t *ui_Arc_MRE_MAP = NULL;
+lv_obj_t *ui_Label_MRE_MAP_Value = NULL;
+lv_obj_t *ui_Arc_MRE_Wastegate = NULL;
+lv_obj_t *ui_Label_MRE_Wastegate_Value = NULL;
 
 // Animation variables
 static lv_anim_t anim_eng_tq_act;
@@ -155,6 +159,10 @@ void ui_Screen5_screen_init(void) {
                "kPa", lv_color_hex(0x00D4FF), 100, 250, 20, 1580, GAUGE_BOOST_ACT);
   create_gauge(ui_Screen5, &ui_Arc_Ambient_Temp, &ui_Label_Ambient_Temp_Value, "Ambient Temp",
                "°C", lv_color_hex(0x00FF88), -20, 60, 370, 1580, GAUGE_AMBIENT_TEMP);
+  create_gauge(ui_Screen5, &ui_Arc_MRE_MAP, &ui_Label_MRE_MAP_Value, "MAP sensor MRE",
+               "kPa", lv_color_hex(0x00D4FF), 100, 250, 20, 1960, GAUGE_MRE_MAP);
+  create_gauge(ui_Screen5, &ui_Arc_MRE_Wastegate, &ui_Label_MRE_Wastegate_Value, "Westgate MRE",
+               "%", lv_color_hex(0x00FF88), 0, 100, 370, 1960, GAUGE_MRE_WASTEGATE);
 
   // Apply initial layout
   ui_Screen5_update_layout();
@@ -365,6 +373,31 @@ void ui_Screen5_update_arc_visibility(int arc_index, bool visible) {
 }
 
 void ui_Screen5_screen_destroy(void) {
+  ui_Arc_Eng_TQ_Act = NULL;
+  ui_Label_Eng_TQ_Act_Value = NULL;
+  ui_Arc_Limit_TQ = NULL;
+  ui_Label_Limit_TQ_Value = NULL;
+  ui_Arc_IAT = NULL;
+  ui_Label_IAT_Value = NULL;
+  ui_Arc_Speed = NULL;
+  ui_Label_Speed_Value = NULL;
+  ui_Arc_Trans_Temp = NULL;
+  ui_Label_Trans_Temp_Value = NULL;
+  ui_Arc_AFR = NULL;
+  ui_Label_AFR_Value = NULL;
+  ui_Arc_EGT = NULL;
+  ui_Label_EGT_Value = NULL;
+  ui_Arc_Knock_Retard = NULL;
+  ui_Label_Knock_Retard_Value = NULL;
+  ui_Arc_Boost_Act = NULL;
+  ui_Label_Boost_Act_Value = NULL;
+  ui_Arc_Ambient_Temp = NULL;
+  ui_Label_Ambient_Temp_Value = NULL;
+  ui_Arc_MRE_MAP = NULL;
+  ui_Label_MRE_MAP_Value = NULL;
+  ui_Arc_MRE_Wastegate = NULL;
+  ui_Label_MRE_Wastegate_Value = NULL;
+
   if (ui_Screen5) {
     lv_obj_del(ui_Screen5);
     ui_Screen5 = NULL;

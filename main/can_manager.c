@@ -138,7 +138,7 @@ void can_rx_task(void *pvParameters) {
 
       // Send to UI Sniffer / Logger
       // Must take LVGL lock because we are calling UI functions
-      if (example_lvgl_lock(10)) {
+      if (ui_get_can_sniffer_active() && example_lvgl_lock(10)) {
         ui_process_real_can_message_bus(1, message.identifier, message.data,
                                         message.data_length_code, false);
         example_lvgl_unlock();
@@ -177,7 +177,7 @@ void can2_rx_task(void *pvParameters) {
       }
 
       // Forward to UI Sniffer / Logger
-      if (example_lvgl_lock(10)) {
+      if (ui_get_can_sniffer_active() && example_lvgl_lock(10)) {
         ui_process_real_can_message_bus(2, message.identifier, message.data,
                                         message.data_length_code, false);
         example_lvgl_unlock();

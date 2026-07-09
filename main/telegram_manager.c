@@ -15,6 +15,7 @@
 #include "ai_commands.h"
 #include "ai_config.h"
 #include "ai_manager.h"
+#include "ecu_data.h"
 #include "cJSON.h"
 
 #include "cap_im_tg.h"
@@ -132,6 +133,7 @@ static esp_err_t dashboard_tg_bridge_execute(const char *input_json,
                 "• `/tg` or `/telegram` - Show this Telegram guide\n"
                 "• `/status` - Get system running status\n"
                 "• `/ecu` - Fetch live vehicle ECU telemetry\n"
+                "• `/launch` - Launch Control diagnostics (5 conditions)\n"
                 "• `/demo_on` / `/demo_off` - Toggle live demo simulator\n"
                 "• `/save` - Save current settings to SD card\n"
                 "• `/lua <code>` - Upload Lua script to editor";
@@ -163,6 +165,38 @@ static esp_err_t dashboard_tg_bridge_execute(const char *input_json,
         else if (strcasecmp(msg, "/save") == 0) {
             ai_cmd_result_t r = ai_cmd_save_settings();
             telegram_send_message(r.message);
+            processed = true;
+        }
+        else if (strcasecmp(msg, "/launch") == 0 || strcasecmp(msg, "launch") == 0) {
+            ecu_data_t data;
+            ecu_data_get_copy(&data);
+
+            bool c1 = (data.gear_lever_val == 12);
+            bool c2 = (data.vehicle_speed < 1.0f);
+            bool c3 = (data.pedal_position > 80.0f);
+            bool c4 = (data.brake_status == 3);
+            bool c5 = (data.tcu_torque_intervention);
+            int met = c1 + c2 + c3 + c4 + c5;
+
+            char lc_msg[512];
+            snprintf(lc_msg, sizeof(lc_msg),
+                "🏁 *Launch Control Diagnostics* (%d/5)\n\n"
+                "%s 1. Selector: %s (%d)\n"
+                "%s 2. Speed: %.0f km/h\n"
+                "%s 3. Throttle: %.0f%%\n"
+                "%s 4. Brake: %s (%d)\n"
+                "%s 5. TCU Torque: %s\n\n"
+                "RPM: %.0f | MAP: %.0f kPa\n"
+                "Status: %s",
+                met,
+                c1 ? "✅" : "❌", c1 ? "Sport" : "N/A", data.gear_lever_val,
+                c2 ? "✅" : "❌", data.vehicle_speed,
+                c3 ? "✅" : "❌", data.pedal_position,
+                c4 ? "✅" : "❌", c4 ? "Pressed" : "Released", data.brake_status,
+                c5 ? "✅" : "❌", c5 ? "Active" : "Inactive",
+                data.engine_rpm, data.map_kpa,
+                met == 5 ? "🟢 LAUNCH ACTIVE" : (met > 0 ? "🟡 PRELAUNCH" : "⚪ STANDBY"));
+            telegram_send_message(lc_msg);
             processed = true;
         }
 

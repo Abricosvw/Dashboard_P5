@@ -332,42 +332,53 @@ static void parse_ecu_group_transaction(ecu_data_t *state, void *ctx) {
     
     const uint8_t *params = &payload[2];
     uint16_t params_len = len - 2;
+    uint32_t now = esp_timer_get_time() / 1000;
     
     if (group == 3) {
         // Group 3: RPM, MAP, TPS, Timing Angle, IAT, Ambient Temp
         if (params_len >= 3) {
-            state->engine_rpm = parse_vag_value(params[0], params[1], params[2]);
+            state->engine_rpm_diag = parse_vag_value(params[0], params[1], params[2]);
+            state->last_diag_update_ms[GAUGE_RPM] = now;
         }
         if (params_len >= 6) {
-            state->map_kpa = parse_vag_value(params[3], params[4], params[5]);
+            state->map_kpa_diag = parse_vag_value(params[3], params[4], params[5]);
+            state->last_diag_update_ms[GAUGE_MAP] = now;
+            state->last_diag_update_ms[GAUGE_BOOST_ACT] = now;
         }
         if (params_len >= 9) {
-            state->tps_position = parse_vag_value(params[6], params[7], params[8]);
+            state->tps_position_diag = parse_vag_value(params[6], params[7], params[8]);
+            state->last_diag_update_ms[GAUGE_TPS] = now;
         }
         // Timing Angle (params[9..11]) is ignored for now
         if (params_len >= 15) {
-            state->iat_temp = parse_vag_value(params[12], params[13], params[14]);
+            state->iat_temp_diag = parse_vag_value(params[12], params[13], params[14]);
+            state->last_diag_update_ms[GAUGE_IAT] = now;
         }
     } 
     else if (group == 4) {
         // Group 4: RPM, Voltage, Temps (Coolant G62 is parameter 6, Ambient G17 is parameter 7)
         if (params_len >= 6) {
-            state->battery_voltage = parse_vag_value(params[3], params[4], params[5]);
+            state->battery_voltage_diag = parse_vag_value(params[3], params[4], params[5]);
+            state->last_diag_update_ms[GAUGE_BATTERY] = now;
         }
         if (params_len >= 18) {
-            state->clt_temp = parse_vag_value(params[15], params[16], params[17]);
+            state->clt_temp_diag = parse_vag_value(params[15], params[16], params[17]);
+            state->last_diag_update_ms[GAUGE_WATER_TEMP] = now;
         }
         if (params_len >= 21) {
-            state->ambient_temp = parse_vag_value(params[18], params[19], params[20]);
+            state->ambient_temp_diag = parse_vag_value(params[18], params[19], params[20]);
+            state->last_diag_update_ms[GAUGE_AMBIENT_TEMP] = now;
         }
     } 
     else if (group == 31) {
         // Group 31: Lambda actual, Lambda specified
         if (params_len >= 3) {
-            state->afr_val = parse_vag_value(params[0], params[1], params[2]);
+            state->afr_val_diag = parse_vag_value(params[0], params[1], params[2]);
+            state->last_diag_update_ms[GAUGE_AFR] = now;
         }
         if (params_len >= 6) {
-            state->afr_target = parse_vag_value(params[3], params[4], params[5]);
+            state->afr_target_diag = parse_vag_value(params[3], params[4], params[5]);
+            state->last_diag_update_ms[GAUGE_AFR] = now;
         }
     }
 }
@@ -388,6 +399,7 @@ static void parse_tcu_group_transaction(ecu_data_t *state, void *ctx) {
     
     const uint8_t *params = &payload[2];
     uint16_t params_len = len - 2;
+    uint32_t now = esp_timer_get_time() / 1000;
     
     if (group == 2) {
         // Group 2: Mode selection and Gear position (Formula type 17: ASCII bytes)
@@ -396,16 +408,17 @@ static void parse_tcu_group_transaction(ecu_data_t *state, void *ctx) {
             uint8_t mode_b = params[2];
             int8_t selector_pos = 0; // 0=Unknown, 1=P, 2=R, 3=N, 4=D, 5=S, 6=Tiptronic
             
-            if (mode_a == ' ' && mode_b == 'P') selector_pos = 1;
-            else if (mode_a == ' ' && mode_b == 'R') selector_pos = 2;
-            else if (mode_a == ' ' && mode_b == 'N') selector_pos = 3;
-            else if (mode_a == ' ' && mode_b == 'D') selector_pos = 4;
-            else if (mode_a == ' ' && mode_b == 'S') selector_pos = 5;
-            else if (mode_a == 'T' && mode_b == 'T') selector_pos = 6;
-            else if (mode_a == 'P' && mode_b == 'L') selector_pos = 6;
-            else if (mode_a == 'M' && mode_b == 'I') selector_pos = 6;
+            if (mode_a == ' ' && mode_b == 'P') selector_pos = 2;
+            else if (mode_a == ' ' && mode_b == 'R') selector_pos = 3;
+            else if (mode_a == ' ' && mode_b == 'N') selector_pos = 4;
+            else if (mode_a == ' ' && mode_b == 'D') selector_pos = 5;
+            else if (mode_a == ' ' && mode_b == 'S') selector_pos = 6;
+            else if (mode_a == 'T' && mode_b == 'T') selector_pos = 7;
+            else if (mode_a == 'P' && mode_b == 'L') selector_pos = 7;
+            else if (mode_a == 'M' && mode_b == 'I') selector_pos = 7;
             
-            state->selector_position = selector_pos;
+            state->selector_position_diag = selector_pos;
+            state->last_diag_update_ms[GAUGE_TCU] = now;
         }
         
         if (params_len >= 12 && params[9] == 17) {
@@ -418,7 +431,8 @@ static void parse_tcu_group_transaction(ecu_data_t *state, void *ctx) {
                 gear = -1;
             }
             
-            state->gear = gear;
+            state->gear_diag = gear;
+            state->last_diag_update_ms[GAUGE_TCU] = now;
         }
     }
 }

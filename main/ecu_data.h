@@ -29,6 +29,7 @@ typedef struct {
   float wg_set_percent;
   float wg_pos_percent;
   float bov_percent;
+  float target_boost;
 
   // Torque Values (Nm)
   float tcu_tq_req_nm;
@@ -46,8 +47,59 @@ typedef struct {
   float egt_temp;
   float knock_retard;
   float ambient_temp;
+  float mre_map_kpa;
+  float mre_wg_pos_percent;
+
+  // Launch Control Diagnostics
+  bool launch_control_active;  // Tra_stLnchCtlActv
+  bool tcu_launch_ready;       // GE1_LaunchControl (0x440 byte 6 bit 0)
+  uint8_t gear_lever_val;      // Gbx_stGearLvr (e.g. 12 = Sport)
+  float pedal_position;        // APP_r (0-100%)
+  uint8_t brake_status;        // Brk_st (e.g. 3 = pressed)
+  bool tcu_torque_intervention;// Tra_stTSC.5
 
   // System
+  bool dsg_shift_active;
+  bool dsg_blip_active;
+  bool asr_active;
+  bool esp_active;
+
+  // CAN1 Raw (Powertrain) Values
+  float engine_rpm_raw;
+  float tps_position_raw;
+  float abs_pedal_pos_raw;
+  float map_kpa_raw;
+  float clt_temp_raw;
+  float iat_temp_raw;
+  float oil_temp_raw;
+  float vehicle_speed_raw;
+  float battery_voltage_raw;
+  float afr_val_raw;
+  float afr_target_raw;
+  int8_t gear_raw;
+  int8_t selector_position_raw;
+  float ambient_temp_raw;
+
+  // CAN2 Diagnostic (OBD2 Polled) Values
+  float engine_rpm_diag;
+  float tps_position_diag;
+  float abs_pedal_pos_diag;
+  float map_kpa_diag;
+  float clt_temp_diag;
+  float iat_temp_diag;
+  float oil_temp_diag;
+  float vehicle_speed_diag;
+  float battery_voltage_diag;
+  float afr_val_diag;
+  float afr_target_diag;
+  int8_t gear_diag;
+  int8_t selector_position_diag;
+  float ambient_temp_diag;
+
+  // Telemetry update timestamps
+  uint32_t last_raw_update_ms[32];
+  uint32_t last_diag_update_ms[32];
+
   uint64_t timestamp;
 } ecu_data_t;
 
@@ -95,11 +147,17 @@ typedef struct {
   bool show_knock_retard;
   bool show_boost_act;
   bool show_ambient_temp;
+  bool show_mre_map;
+  bool show_mre_wastegate;
+  bool mre_parallel;
   bool send_ambient_temp_to_can;
   float ambient_can_temp;
 
   // Unit settings for each gauge
   uint8_t gauge_units[32];
+
+  // Source settings for each gauge (0=AUTO, 1=CAN1_RAW, 2=CAN2_DIAG)
+  uint8_t gauge_sources[32];
 
   // Dynamic Layout Settings
   int active_gauge_ids[24]; // Ordered list of enabled gauge IDs
@@ -159,6 +217,8 @@ typedef enum {
   GAUGE_KNOCK_RETARD,
   GAUGE_BOOST_ACT,
   GAUGE_AMBIENT_TEMP,
+  GAUGE_MRE_MAP,
+  GAUGE_MRE_WASTEGATE,
 
   GAUGE_MAX
 } gauge_id_t;
